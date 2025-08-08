@@ -1,3 +1,4 @@
+// database/init_db.js
 const pool = require('./db');
 
 const initTables = async () => {
@@ -7,7 +8,8 @@ const initTables = async () => {
         id SERIAL PRIMARY KEY,
         username TEXT NOT NULL,
         email TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL
+        password TEXT NOT NULL,
+        is_verified BOOLEAN NOT NULL DEFAULT false
       );
     `);
 
@@ -20,12 +22,11 @@ const initTables = async () => {
       );
     `);
 
-    console.log('✅ Tables created successfully');
-    process.exit(0);
+    console.log('✅ Tables are ready');
   } catch (err) {
     console.error('❌ Failed to create tables:', err);
-    process.exit(1);
+    throw err;
   }
 };
 
-initTables();
+module.exports = initTables;
