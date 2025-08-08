@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, Alert } from 'react-native';
 import axios from 'axios';
+import { API_BASE_URL } from '../api/config';
 
 const RegisterScreen = ({ navigation }) => {
   const [username, setUsername] = useState('');
@@ -9,12 +10,7 @@ const RegisterScreen = ({ navigation }) => {
 
   const handleRegister = async () => {
     try {
-      const res = await axios.post('http://localhost:5000/api/auth/register', {
-        username,
-        email,
-        password,
-      });
-
+      const res = await axios.post(`${API_BASE_URL}/register`, { username, email, password });
       console.log('Registered:', res.data.user);
       Alert.alert('Registration Successful');
       navigation.navigate('Login');
@@ -29,13 +25,7 @@ const RegisterScreen = ({ navigation }) => {
       <Text style={styles.title}>Register</Text>
       <TextInput style={styles.input} placeholder="Username" value={username} onChangeText={setUsername} />
       <TextInput style={styles.input} placeholder="Email" value={email} onChangeText={setEmail} />
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        value={password}
-        secureTextEntry
-        onChangeText={setPassword}
-      />
+      <TextInput style={styles.input} placeholder="Password" secureTextEntry value={password} onChangeText={setPassword} />
       <Button title="Register" onPress={handleRegister} />
       <Text style={styles.link} onPress={() => navigation.navigate('Login')}>
         Already have an account? Login

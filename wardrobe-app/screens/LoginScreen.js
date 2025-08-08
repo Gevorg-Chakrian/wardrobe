@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, Alert } from 'react-native';
 import axios from 'axios';
+import { API_BASE_URL } from '../api/config';
 
 const LoginScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
@@ -8,16 +9,11 @@ const LoginScreen = ({ navigation }) => {
 
   const handleLogin = async () => {
     try {
-      const res = await axios.post('http://localhost:5000/api/auth/login', {
-        email,
-        password,
-      });
-
+      const res = await axios.post(`${API_BASE_URL}/login`, { email, password });
       const { token, user } = res.data;
-      // TODO: Save token to secure storage later
       console.log('Logged in:', user);
       Alert.alert('Login Successful');
-      navigation.navigate('Wardrobe'); // Change route name as needed
+      navigation.navigate('Wardrobe');
     } catch (err) {
       console.error(err);
       Alert.alert('Login Failed', err.response?.data?.message || 'Something went wrong');
@@ -28,13 +24,7 @@ const LoginScreen = ({ navigation }) => {
     <View style={styles.container}>
       <Text style={styles.title}>Login</Text>
       <TextInput style={styles.input} placeholder="Email" value={email} onChangeText={setEmail} />
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        value={password}
-        secureTextEntry
-        onChangeText={setPassword}
-      />
+      <TextInput style={styles.input} placeholder="Password" secureTextEntry value={password} onChangeText={setPassword} />
       <Button title="Login" onPress={handleLogin} />
       <Text style={styles.link} onPress={() => navigation.navigate('Register')}>
         Don't have an account? Register
