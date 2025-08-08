@@ -1,7 +1,9 @@
+// LoginScreen.js
 import React, { useState } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, Alert } from 'react-native';
 import axios from 'axios';
-import { API_BASE_URL } from '../api/config';
+import * as SecureStore from 'expo-secure-store';
+import { AUTH_BASE_URL } from '../api/config';
 
 const LoginScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
@@ -9,14 +11,28 @@ const LoginScreen = ({ navigation }) => {
 
   const handleLogin = async () => {
     try {
-      const res = await axios.post(`${API_BASE_URL}/login`, { email, password });
-      const { token, user } = res.data;
+      const res = await axios.post(`${AUTH_BASE_URL}/login`, { email, password });
+
+      // backend should return { token, user }
+      const { token, user } = res.data || {};
+      if (!token) {
+        throw new Error('No token returned from server');
+      }
+
+      // Save token for later API calls (Wardrobe screen reads it)
+      await SecureStore.setItemAsync('token', token);
+
       console.log('Logged in:', user);
       Alert.alert('Login Successful');
-      navigation.navigate('Wardrobe');
+
+      // Reset stack so user can’t go “back” to Login
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Wardrobe' }],
+      });
     } catch (err) {
-      console.error(err);
-      Alert.alert('Login Failed', err.response?.data?.message || 'Something went wrong');
+      console.error(err?.response?.data || err.message);
+      Alert.alert('Login Failed', err?.response?.data?.message || 'Something went wrong');
     }
   };
 
