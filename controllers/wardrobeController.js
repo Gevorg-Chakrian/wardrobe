@@ -1,8 +1,11 @@
 const pool = require('../database/db');
 
 // Add clothing item
+// Add clothing item
 exports.addClothingItem = async (req, res) => {
-  const { imageUrl, itemType } = req.body;
+  // accept both camelCase and snake_case
+  const imageUrl = req.body.imageUrl || req.body.image_url;
+  const itemType = req.body.itemType || req.body.item_type;
   const userId = req.user.id;
 
   if (!imageUrl || !itemType) {
@@ -14,7 +17,6 @@ exports.addClothingItem = async (req, res) => {
       'INSERT INTO wardrobe (user_id, image_url, item_type) VALUES ($1, $2, $3) RETURNING *',
       [userId, imageUrl, itemType]
     );
-
     res.status(201).json({ message: 'Clothing item added', item: result.rows[0] });
   } catch (err) {
     console.error(err);
@@ -22,22 +24,30 @@ exports.addClothingItem = async (req, res) => {
   }
 };
 
+
 // Get wardrobe for logged-in user
 exports.getWardrobeByUser = async (req, res) => {
   const userId = req.user.id;
+  const type = (req.query.type || '').trim();
 
   try {
-    const result = await pool.query(
-      'SELECT * FROM wardrobe WHERE user_id = $1 ORDER BY id DESC',
-      [userId]
-    );
+    let sql = 'SELECT * FROM wardrobe WHERE user_id = $1';
+    const params = [userId];
 
+    if (type && type.toLowerCase() !== 'all') {
+      sql += ' AND item_type = $2';
+      params.push(type);
+    }
+    sql += ' ORDER BY id DESC';
+
+    const result = await pool.query(sql, params);
     res.status(200).json(result.rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to fetch wardrobe', error: err.message });
   }
 };
+
 
 // Delete item only if it belongs to the user
 exports.deleteClothingItem = async (req, res) => {
