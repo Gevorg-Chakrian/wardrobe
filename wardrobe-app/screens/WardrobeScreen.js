@@ -1,6 +1,8 @@
 // screens/WardrobeScreen.js
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
+  SafeAreaView,
+  StatusBar,
   View, Text, FlatList, Image, Button, Alert, ActivityIndicator,
   Platform, Modal, TouchableOpacity, TextInput, ScrollView, InteractionManager
 } from 'react-native';
@@ -27,7 +29,7 @@ export default function WardrobeScreen() {
 
   const [typeModalOpen, setTypeModalOpen] = useState(false);
   const [typeSearch, setTypeSearch] = useState('');
-  const [pendingType, setPendingType] = useState(null); // <-- NEW
+  const [pendingType, setPendingType] = useState(null);
 
   const [preview, setPreview] = useState({ open: false, url: null, label: '' });
 
@@ -85,7 +87,6 @@ export default function WardrobeScreen() {
     setTypeModalOpen(true);
   };
 
-  // Wait until animations finish (safer on iPad), then run fn
   const afterInteractions = () =>
     new Promise(r => InteractionManager.runAfterInteractions(r));
 
@@ -105,7 +106,7 @@ export default function WardrobeScreen() {
       const picked = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: mediaType,
         quality: 0.9,
-        presentationStyle: Platform.OS === 'ios' ? 'fullScreen' : undefined, // iPad
+        presentationStyle: Platform.OS === 'ios' ? 'fullScreen' : undefined,
         allowsMultipleSelection: false,
       });
       if (picked.canceled) return;
@@ -152,25 +153,18 @@ export default function WardrobeScreen() {
     } finally {
       setIsPicking(false);
       setIsUploading(false);
-      setPendingType(null); // clear any leftover
-    }
-  };
-
-  // iOS/iPad: start picker ONLY after the type modal is fully dismissed
-  const handleModalDismiss = async () => {
-    if (!pendingType) return;
-    // give iOS a moment to finish transition
-    await afterInteractions();
-    await new Promise(r => setTimeout(r, 350));
-    try {
-      await doPickAndUpload(pendingType);
-    } finally {
       setPendingType(null);
     }
   };
 
-  // Android doesn’t fire onDismiss reliably for transparent modals.
-  // If the modal just closed and we still have a pending type, kick off picker.
+  const handleModalDismiss = async () => {
+    if (!pendingType) return;
+    await afterInteractions();
+    await new Promise(r => setTimeout(r, 350));
+    try { await doPickAndUpload(pendingType); }
+    finally { setPendingType(null); }
+  };
+
   useEffect(() => {
     if (Platform.OS === 'android' && !typeModalOpen && pendingType) {
       (async () => {
@@ -180,9 +174,9 @@ export default function WardrobeScreen() {
         setPendingType(null);
       })();
     }
-  }, [typeModalOpen, pendingType]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [typeModalOpen, pendingType]);
 
-  // --- UI helpers & render ---
+  // --- UI helpers ---
   const Chip = ({ active, label, count, onPress }) => (
     <TouchableOpacity
       onPress={onPress}
@@ -222,56 +216,73 @@ export default function WardrobeScreen() {
     );
   };
 
+  // --- layout tweaks ---
+  const topInset = Platform.OS === 'android' ? (StatusBar.currentHeight || 8) : 8;
+
   return (
-    <View style={{ flex: 1, padding: 12 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-        <TextInput
-          placeholder="Search type in wardrobe…"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          style={{
-            flex: 1, height: 36, borderWidth: 1, borderColor: '#ccc',
-            borderRadius: 8, paddingHorizontal: 10, marginRight: 8
-          }}
-        />
-        <Button title="Add item from gallery" onPress={askTypeThenUpload} />
-      </View>
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-        <Chip
-          label="all"
-          active={filterType === 'all'}
-          count={items.length}
-          onPress={() => { setFilterType('all'); setSearchQuery(''); }}
-        />
-        {Object.keys(typeCounts).sort().map(t => (
-          <Chip
-            key={t}
-            label={t}
-            active={filterType === t}
-            count={typeCounts[t]}
-            onPress={() => { setFilterType(t); setSearchQuery(''); }}
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+      <View style={{ flex: 1, paddingHorizontal: 12, paddingBottom: 12, paddingTop: topInset }}>
+        {/* Header */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+          <TextInput
+            placeholder="Search type in wardrobe…"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            style={{
+              flex: 1, height: 36, borderWidth: 1, borderColor: '#ccc',
+              borderRadius: 8, paddingHorizontal: 10, marginRight: 8
+            }}
           />
-        ))}
-      </ScrollView>
+          <Button title="Add item from gallery" onPress={askTypeThenUpload} />
+        </View>
 
-      {loading ? (
-        <View style={{ flex: 1, justifyContent: 'center' }}><ActivityIndicator /></View>
-      ) : (
-        <FlatList
-          data={filteredItems}
-          keyExtractor={(it) => String(it.id || it.image_url || it.imageUrl)}
-          renderItem={renderCard}
-          ListEmptyComponent={<Text style={{ textAlign: 'center', marginTop: 24 }}>No items yet.</Text>}
-        />
-      )}
+        {/* Chips */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingVertical: 4 }}
+          style={{ marginBottom: 6 }}
+        >
+          <Chip
+            label="all"
+            active={filterType === 'all'}
+            count={items.length}
+            onPress={() => { setFilterType('all'); setSearchQuery(''); }}
+          />
+          {Object.keys(typeCounts).sort().map(t => (
+            <Chip
+              key={t}
+              label={t}
+              active={filterType === t}
+              count={typeCounts[t]}
+              onPress={() => { setFilterType(t); setSearchQuery(''); }}
+            />
+          ))}
+        </ScrollView>
+
+        {/* List pinned to the top */}
+        {loading ? (
+          <View style={{ flex: 1, justifyContent: 'center' }}><ActivityIndicator /></View>
+        ) : (
+          <FlatList
+            data={filteredItems}
+            keyExtractor={(it) => String(it.id || it.image_url || it.imageUrl)}
+            renderItem={renderCard}
+            contentContainerStyle={{ paddingTop: 0, paddingBottom: 24 }}
+            removeClippedSubviews
+            initialNumToRender={8}
+            windowSize={5}
+            ListEmptyComponent={<Text style={{ textAlign: 'center', marginTop: 24 }}>No items yet.</Text>}
+          />
+        )}
+      </View>
 
       {/* Type select modal */}
       <Modal
         visible={typeModalOpen}
         animationType="slide"
         transparent
-        onDismiss={handleModalDismiss} // <--- iOS will call this when closed
+        onDismiss={handleModalDismiss}
       >
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }}>
           <View style={{
@@ -294,8 +305,8 @@ export default function WardrobeScreen() {
               renderItem={({ item }) => (
                 <TouchableOpacity
                   onPress={() => {
-                    setPendingType(item);    // store chosen type
-                    setTypeModalOpen(false); // close modal; picker starts in onDismiss/effect
+                    setPendingType(item);
+                    setTypeModalOpen(false);
                   }}
                   style={{ paddingVertical: 10 }}
                 >
@@ -331,6 +342,6 @@ export default function WardrobeScreen() {
           )}
         </TouchableOpacity>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
