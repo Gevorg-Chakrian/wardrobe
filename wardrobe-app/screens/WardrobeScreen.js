@@ -17,7 +17,9 @@ export default function WardrobeScreen() {
     try {
       setLoading(true);
       const token = await getToken();
-      const res = await api.get('/wardrobe', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await api.get('/wardrobe', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       setItems(res.data?.items || res.data || []);
     } catch (e) {
       console.log('fetchWardrobe error:', e?.response?.data || e.message);
@@ -27,18 +29,25 @@ export default function WardrobeScreen() {
     }
   }, []);
 
-  useEffect(() => { fetchWardrobe(); }, [fetchWardrobe]);
+  useEffect(() => {
+    fetchWardrobe();
+  }, [fetchWardrobe]);
 
   const pickAndUpload = async () => {
     try {
+      // Ask for permission
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
         Alert.alert('Permission required', 'We need access to your gallery.');
         return;
       }
 
+      // Pick image
       const mediaType = ImagePicker.MediaType?.Images ?? ImagePicker.MediaTypeOptions.Images;
-      const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: mediaType, quality: 0.9 });
+      const picked = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: mediaType,
+        quality: 0.9,
+      });
       if (picked.canceled) return;
 
       const asset = picked.assets[0];
@@ -46,35 +55,43 @@ export default function WardrobeScreen() {
       const name = asset.fileName || `photo_${Date.now()}.jpg`;
       const type = asset.mimeType || 'image/jpeg';
 
+      console.log('Picked asset:', asset);
+
+      // Prepare form data
       const form = new FormData();
       form.append('image', { uri, name, type });
-      form.append('item_type', 'tshirt');
+      form.append('item_type', 'shirt'); // This will now reliably reach the backend
 
-      const token = await SecureStore.getItemAsync('token');
+      const token = await getToken();
+      console.log('Uploading to:', `${API_BASE_URL}/upload`);
 
-      const uploadRes = await fetch(`${API_BASE_URL}/upload`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: form,
+      // Upload with axios
+      const uploadRes = await api.post('/upload', form, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data',
+        },
       });
 
-      const data = await uploadRes.json().catch(() => ({}));
-      if (!uploadRes.ok) {
-        console.log('upload error:', uploadRes.status, data);
-        throw new Error(data?.message || `Upload failed (${uploadRes.status})`);
-      }
+      console.log('Upload response:', uploadRes.data);
 
-      const { image_url, item_type, url, type: detected } = data || {};
+      const { image_url, item_type, url, type: detected } = uploadRes.data || {};
       const imageUrl = image_url || url;
       const finalType = item_type || detected || 'tshirt';
 
-      // Save to wardrobe
-      const saveToken = token || (await SecureStore.getItemAsync('token'));
       await api.post(
         '/wardrobe',
-        { image_url: imageUrl, item_type: finalType },
-        { headers: { Authorization: `Bearer ${saveToken}` } }
+        {
+          // camelCase
+          imageUrl: imageUrl,
+          itemType: finalType,
+          // snake_case (what the upload response uses)
+          image_url: imageUrl,
+          item_type: finalType,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
       );
+
 
       Alert.alert('Added!', 'Item was added to your wardrobe.');
       fetchWardrobe();
@@ -84,9 +101,12 @@ export default function WardrobeScreen() {
     }
   };
 
-
   if (loading) {
-    return <View style={{ flex: 1, justifyContent: 'center' }}><ActivityIndicator /></View>;
+    return (
+      <View style={{ flex: 1, justifyContent: 'center' }}>
+        <ActivityIndicator />
+      </View>
+    );
   }
 
   return (
