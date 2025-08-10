@@ -33,7 +33,6 @@ export default function WardrobeScreen() {
 
   const [preview, setPreview] = useState({ open: false, url: null, label: '' });
 
-  // guards
   const [isPicking, setIsPicking] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -176,7 +175,6 @@ export default function WardrobeScreen() {
     }
   }, [typeModalOpen, pendingType]);
 
-  // --- UI helpers ---
   const Chip = ({ active, label, count, onPress }) => (
     <TouchableOpacity
       onPress={onPress}
@@ -216,8 +214,9 @@ export default function WardrobeScreen() {
     );
   };
 
-  // --- layout tweaks ---
-  const topInset = Platform.OS === 'android' ? (StatusBar.currentHeight || 8) : 8;
+  // make header sit lower; keep list stuck to top
+  const topInset =
+    (Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0) + 18;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
@@ -262,17 +261,25 @@ export default function WardrobeScreen() {
 
         {/* List pinned to the top */}
         {loading ? (
-          <View style={{ flex: 1, justifyContent: 'center' }}><ActivityIndicator /></View>
+          <View style={{ flex: 1, justifyContent: 'center' }}>
+            <ActivityIndicator />
+          </View>
         ) : (
           <FlatList
             data={filteredItems}
             keyExtractor={(it) => String(it.id || it.image_url || it.imageUrl)}
             renderItem={renderCard}
-            contentContainerStyle={{ paddingTop: 0, paddingBottom: 24 }}
+            contentContainerStyle={{
+              paddingTop: 0,
+              paddingBottom: 24,
+              flexGrow: 0,            // <-- keep rows at the very top
+            }}
             removeClippedSubviews
             initialNumToRender={8}
             windowSize={5}
-            ListEmptyComponent={<Text style={{ textAlign: 'center', marginTop: 24 }}>No items yet.</Text>}
+            ListEmptyComponent={
+              <Text style={{ textAlign: 'center', marginTop: 24 }}>No items yet.</Text>
+            }
           />
         )}
       </View>
