@@ -25,7 +25,7 @@ const MASTER_TYPES = [
 const { width } = Dimensions.get('window');
 const COLS = 3;
 const GAP = 10;
-const TILE = Math.floor((width - 24 /* page paddings */ - GAP * (COLS - 1)) / COLS);
+const TILE = Math.floor((width - 24 - GAP * (COLS - 1)) / COLS);
 
 export default function WardrobeScreen({ navigation }) {
   const [items, setItems] = useState([]);
@@ -37,8 +37,6 @@ export default function WardrobeScreen({ navigation }) {
   const [typeModalOpen, setTypeModalOpen] = useState(false);
   const [typeSearch, setTypeSearch] = useState('');
   const [pendingType, setPendingType] = useState(null);
-
-  const [preview, setPreview] = useState({ open: false, url: null, label: '' });
 
   const [isPicking, setIsPicking] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -61,7 +59,6 @@ export default function WardrobeScreen({ navigation }) {
     }
   }, []);
 
-  // refresh when screen gains focus (e.g., after saving details)
   useFocusEffect(useCallback(() => { fetchWardrobe(); }, [fetchWardrobe]));
 
   const typeCounts = useMemo(() => {
@@ -141,14 +138,9 @@ export default function WardrobeScreen({ navigation }) {
       const imageUrl = image_url || url;
       const finalType = (item_type || detected || chosenType);
 
-      // 👉 Go to the tagging screen instead of saving directly
-      navigation.navigate('AddItemDetails', { imageUrl, itemType: finalType });
+      navigation.navigate('AddItemDetails', { imageUrl, initialType: finalType });
     } catch (e) {
-      if (e.response) {
-        console.log('upload failed: status', e.response.status, e.response.data);
-      } else {
-        console.log('upload failed:', e.message);
-      }
+      console.log('upload failed:', e.response ? e.response.data : e.message);
       Alert.alert('Upload failed', e?.response?.data?.message || e.message || 'Please try again.');
     } finally {
       setIsPicking(false);
@@ -176,7 +168,6 @@ export default function WardrobeScreen({ navigation }) {
     }
   }, [typeModalOpen, pendingType]);
 
-  // --- UI helpers ---
   const Chip = ({ active, label, count, onPress }) => (
     <TouchableOpacity
       onPress={onPress}
@@ -199,16 +190,15 @@ export default function WardrobeScreen({ navigation }) {
     </TouchableOpacity>
   );
 
-  const GridItem = ({ uri, label }) => (
+  const GridItem = ({ uri, label, onPress }) => (
     <TouchableOpacity
-      onPress={() => setPreview({ open: true, url: uri, label })}
+      onPress={onPress}
       style={{ width: TILE, height: TILE, borderRadius: 10, overflow: 'hidden', backgroundColor: '#eee' }}
     >
       <Image source={{ uri }} style={{ width: '100%', height: '100%' }} />
     </TouchableOpacity>
   );
 
-  // group items for the "All" view
   const grouped = useMemo(() => {
     const map = {};
     for (const it of items) {
@@ -218,13 +208,11 @@ export default function WardrobeScreen({ navigation }) {
     return map;
   }, [items]);
 
-  // layout tweaks
   const topInset = (Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0) + 18;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
       <View style={{ flex: 1, paddingHorizontal: 12, paddingBottom: 12, paddingTop: topInset }}>
-        {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
           <TextInput
             placeholder="Search by type"
@@ -239,7 +227,6 @@ export default function WardrobeScreen({ navigation }) {
           <Button title="Add item from gallery" onPress={askTypeThenUpload} />
         </View>
 
-        {/* Chips */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -263,11 +250,9 @@ export default function WardrobeScreen({ navigation }) {
           ))}
         </ScrollView>
 
-        {/* Content */}
         {loading ? (
           <View style={{ flex: 1, justifyContent: 'center' }}><ActivityIndicator /></View>
         ) : filterType === 'all' ? (
-          // Grouped gallery for "All"
           <ScrollView
             contentContainerStyle={{ paddingBottom: 24 }}
             showsVerticalScrollIndicator={false}
@@ -281,7 +266,18 @@ export default function WardrobeScreen({ navigation }) {
                   data={grouped[t] || []}
                   keyExtractor={(it) => String(it.id || it.image_url || it.imageUrl)}
                   renderItem={({ item }) => (
-                    <GridItem uri={item.image_url || item.imageUrl || item.url} label={t} />
+                    <GridItem
+                      uri={item.image_url || item.imageUrl || item.url}
+                      label={t}
+                      onPress={() =>
+                        navigation.navigate('AddItemDetails', {
+                          itemId: item.id,
+                          imageUrl: item.image_url || item.imageUrl || item.url,
+                          initialType: (item.item_type || item.itemType || 'tshirt').toLowerCase(),
+                          existingTags: item.tags || {},
+                        })
+                      }
+                    />
                   )}
                   numColumns={COLS}
                   columnWrapperStyle={{ gap: GAP }}
@@ -295,12 +291,22 @@ export default function WardrobeScreen({ navigation }) {
             )}
           </ScrollView>
         ) : (
-          // Plain grid when a single type is selected
           <FlatList
             data={filteredItems}
             keyExtractor={(it) => String(it.id || it.image_url || it.imageUrl)}
             renderItem={({ item }) => (
-              <GridItem uri={item.image_url || item.imageUrl || item.url} label={filterType} />
+              <GridItem
+                uri={item.image_url || item.imageUrl || item.url}
+                label={filterType}
+                onPress={() =>
+                  navigation.navigate('AddItemDetails', {
+                    itemId: item.id,
+                    imageUrl: item.image_url || item.imageUrl || item.url,
+                    initialType: (item.item_type || item.itemType || 'tshirt').toLowerCase(),
+                    existingTags: item.tags || {},
+                  })
+                }
+              />
             )}
             numColumns={COLS}
             columnWrapperStyle={{ gap: GAP }}
@@ -310,7 +316,6 @@ export default function WardrobeScreen({ navigation }) {
         )}
       </View>
 
-      {/* Type select modal */}
       <Modal
         visible={typeModalOpen}
         animationType="slide"
@@ -352,28 +357,6 @@ export default function WardrobeScreen({ navigation }) {
             <Button title="Close" onPress={() => setTypeModalOpen(false)} />
           </View>
         </View>
-      </Modal>
-
-      {/* Preview */}
-      <Modal
-        visible={preview.open}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setPreview({ open: false, url: null, label: '' })}
-      >
-        <TouchableOpacity
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center' }}
-          onPress={() => setPreview({ open: false, url: null, label: '' })}
-          activeOpacity={1}
-        >
-          {!!preview.url && (
-            <>
-              <Image source={{ uri: preview.url }} style={{ width: '90%', height: '70%', resizeMode: 'contain' }} />
-              <Text style={{ color: '#fff', marginTop: 10 }}>{preview.label}</Text>
-              <Text style={{ color: '#bbb', marginTop: 6, fontSize: 12 }}>(tap to close)</Text>
-            </>
-          )}
-        </TouchableOpacity>
       </Modal>
     </SafeAreaView>
   );

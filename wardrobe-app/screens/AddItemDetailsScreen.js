@@ -1,16 +1,8 @@
-// screens/AddItemScreen.js
-import React, { useMemo, useState, useEffect } from 'react';
+// screens/AddItemDetailsScreen.js  (aka AddItemScreen)
+import React, { useMemo, useState } from 'react';
 import {
-  SafeAreaView,
-  View,
-  Text,
-  ScrollView,
-  Image,
-  TouchableOpacity,
-  Button,
-  Alert,
-  Platform,
-  Dimensions,
+  SafeAreaView, View, Text, ScrollView, Image, TouchableOpacity, Button,
+  Alert, Platform, Dimensions
 } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
@@ -19,16 +11,13 @@ import { API_BASE_URL } from '../api/config';
 const api = axios.create({ baseURL: API_BASE_URL });
 
 const TAGS = {
-  color: [
-    'black','white','gray','beige','brown','navy','blue','green','yellow','orange',
-    'red','pink','purple','gold','silver','multicolor',
-  ],
+  color: ['black','white','gray','beige','brown','navy','blue','green','yellow','orange','red','pink','purple','gold','silver','multicolor'],
   season: ['spring','summer','autumn','winter','all-season'],
   fit: ['oversized','slim','regular','cropped','longline','boxy','tailored'],
   occasion: ['casual','work','formal','sport','streetwear','beach','loungewear'],
   material: ['cotton','wool','linen','denim','leather','synthetic','silk','knit'],
   pattern: ['solid','striped','checked','floral','geometric','polka-dot','animal','camouflage'],
-  feature: ['waterproof','hooded','padded','embellished','sheer','sleeveless','backless'],
+  feature: ['hooded','padded','embellished','sheer','sleeveless','backless'],
 };
 
 const TITLES = {
@@ -41,7 +30,8 @@ const TITLES = {
   feature: 'Special Features',
 };
 
-const { width: SCREEN_W } = Dimensions.get('window');
+const SCREEN_W = Dimensions.get('window').width;
+const HERO_HEIGHT = Math.min(420, Math.round(SCREEN_W * 1.2));
 
 const Section = ({ title, children }) => (
   <View style={{ marginTop: 18 }}>
@@ -66,33 +56,28 @@ const Chip = ({ active, label, onPress }) => (
   </TouchableOpacity>
 );
 
+const emptySel = { color: [], season: [], fit: [], occasion: [], material: [], pattern: [], feature: [] };
+const toArray = (v) => Array.isArray(v) ? v : (v ? [v] : []);
+
 export default function AddItemScreen({ navigation, route }) {
-  const imageUrl = route.params?.imageUrl;
+  const imageUrl    = route.params?.imageUrl;
   const initialType = (route.params?.initialType || 'tshirt').toLowerCase();
+  const itemId      = route.params?.itemId || null;
+  const existing    = route.params?.existingTags || {};
+
+  // prefill when editing
+  const initialSelected = {
+    color:     toArray(existing.color),
+    season:    toArray(existing.season),
+    fit:       toArray(existing.fit),
+    occasion:  toArray(existing.occasion),
+    material:  toArray(existing.material),
+    pattern:   toArray(existing.pattern),
+    feature:   toArray(existing.feature),
+  };
 
   const [saving, setSaving] = useState(false);
-  const [selected, setSelected] = useState({
-    color: [],
-    season: [],
-    fit: [],
-    occasion: [],
-    material: [],
-    pattern: [],
-    feature: [],
-  });
-
-  // --- image aspect ratio so it never crops ---
-  const [imgAR, setImgAR] = useState(1); // width / height
-  useEffect(() => {
-    if (!imageUrl) return;
-    Image.getSize(
-      imageUrl,
-      (w, h) => {
-        if (w && h) setImgAR(w / h);
-      },
-      () => setImgAR(1) // fallback square if lookup fails
-    );
-  }, [imageUrl]);
+  const [selected, setSelected] = useState(itemId ? initialSelected : emptySel);
 
   // generic toggler; for color we enforce max 2
   const toggle = (cat, value, max = Infinity) => {
@@ -100,9 +85,8 @@ export default function AddItemScreen({ navigation, route }) {
       const curr = prev[cat] || [];
       const exists = curr.includes(value);
       let next;
-      if (exists) {
-        next = curr.filter((v) => v !== value);
-      } else {
+      if (exists) next = curr.filter((v) => v !== value);
+      else {
         if (curr.length >= max) return prev;
         next = [...curr, value];
       }
@@ -110,31 +94,40 @@ export default function AddItemScreen({ navigation, route }) {
     });
   };
 
+  // require at least 1 for every category EXCEPT "feature"
+  const REQUIRED_CATS = Object.keys(TAGS).filter(k => k !== 'feature');
   const isValid = useMemo(() => {
-    // require at least one tag in every category
-    return Object.keys(TAGS).every((k) => (selected[k] || []).length > 0);
+    return REQUIRED_CATS.every((k) => (selected[k] || []).length > 0)
+           && (selected.color || []).length > 0   // explicit, since color is special
+           && (selected.color || []).length <= 2; // cap already enforced, but keep guard
   }, [selected]);
 
   const onSave = async () => {
     if (!isValid) {
-      Alert.alert('Missing info', 'Please pick at least one tag in each section.');
+      Alert.alert('Missing info', 'Please pick at least one tag in each section (features are optional).');
       return;
     }
     try {
       setSaving(true);
       const token = await SecureStore.getItemAsync('token');
 
-      await api.post(
-        '/wardrobe',
-        {
-          image_url: imageUrl,
-          item_type: initialType,
-          tags: selected,
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      if (itemId) {
+        // EDIT
+        await api.put(
+          `/wardrobe/${itemId}`,
+          { item_type: initialType, tags: selected },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+      } else {
+        // ADD
+        await api.post(
+          '/wardrobe',
+          { image_url: imageUrl, item_type: initialType, tags: selected },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+      }
 
-      Alert.alert('Saved!', 'Item added to your wardrobe.');
+      Alert.alert('Saved!', itemId ? 'Changes updated.' : 'Item added to your wardrobe.');
       navigation.goBack();
     } catch (e) {
       console.log('save item error:', e?.response?.data || e.message);
@@ -146,39 +139,22 @@ export default function AddItemScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
-      <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 28 }}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Image preview (auto height from real aspect ratio) */}
-        <View style={{ marginTop: 12, marginBottom: 16, alignItems: 'center' }}>
-          <Image
-            source={{ uri: imageUrl }}
-            style={{
-              width: SCREEN_W - 32,           // page padding 16 + 16
-              aspectRatio: imgAR || 1,        // auto height
-              borderRadius: 14,
-              backgroundColor: '#f8f8f8',
-            }}
-            resizeMode="contain"
-          />
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 28 }} showsVerticalScrollIndicator={false}>
+        {/* hero image */}
+        <View style={{ marginTop: 16, marginBottom: 16, borderRadius: 12, overflow: 'hidden', backgroundColor: '#f8f8f8', height: HERO_HEIGHT }}>
+          <Image source={{ uri: imageUrl }} style={{ width: '100%', height: '100%', resizeMode: 'contain' }} />
         </View>
 
         {/* sections */}
         <Section title={TITLES.color}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
             {TAGS.color.map((c) => (
-              <Chip
-                key={c}
-                label={c}
-                active={selected.color.includes(c)}
-                onPress={() => toggle('color', c, 2)}
-              />
+              <Chip key={c} label={c} active={selected.color.includes(c)} onPress={() => toggle('color', c, 2)} />
             ))}
           </View>
         </Section>
 
-        {['season', 'fit', 'occasion', 'material', 'pattern', 'feature'].map((cat) => (
+        {(['season','fit','occasion','material','pattern','feature']).map((cat) => (
           <Section key={cat} title={TITLES[cat]}>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
               {TAGS[cat].map((v) => (
@@ -194,7 +170,7 @@ export default function AddItemScreen({ navigation, route }) {
         ))}
 
         <View style={{ height: 16 }} />
-        <Button title={saving ? 'Saving…' : 'Save item'} onPress={onSave} disabled={saving} />
+        <Button title={saving ? 'Saving…' : (itemId ? 'Save changes' : 'Save item')} onPress={onSave} disabled={saving} />
         <View style={{ height: 24 }} />
       </ScrollView>
     </SafeAreaView>
