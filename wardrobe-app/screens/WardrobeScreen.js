@@ -7,6 +7,7 @@ import {
   Platform, Modal, TouchableOpacity, TextInput, ScrollView, InteractionManager,
   Dimensions,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
@@ -26,7 +27,7 @@ const COLS = 3;
 const GAP = 10;
 const TILE = Math.floor((width - 24 /* page paddings */ - GAP * (COLS - 1)) / COLS);
 
-export default function WardrobeScreen() {
+export default function WardrobeScreen({ navigation }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -60,7 +61,8 @@ export default function WardrobeScreen() {
     }
   }, []);
 
-  useEffect(() => { fetchWardrobe(); }, [fetchWardrobe]);
+  // refresh when screen gains focus (e.g., after saving details)
+  useFocusEffect(useCallback(() => { fetchWardrobe(); }, [fetchWardrobe]));
 
   const typeCounts = useMemo(() => {
     const counts = {};
@@ -139,15 +141,8 @@ export default function WardrobeScreen() {
       const imageUrl = image_url || url;
       const finalType = (item_type || detected || chosenType);
 
-      await api.post(
-        '/wardrobe',
-        { imageUrl: imageUrl, itemType: finalType, image_url: imageUrl, item_type: finalType },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      setFilterType(finalType.toLowerCase());
-      setSearchQuery('');
-      fetchWardrobe();
+      // 👉 Go to the tagging screen instead of saving directly
+      navigation.navigate('AddItemDetails', { imageUrl, itemType: finalType });
     } catch (e) {
       if (e.response) {
         console.log('upload failed: status', e.response.status, e.response.data);
