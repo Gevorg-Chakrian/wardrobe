@@ -4,7 +4,8 @@ import {
   SafeAreaView,
   StatusBar,
   View, Text, FlatList, Image, Button, Alert, ActivityIndicator,
-  Platform, Modal, TouchableOpacity, TextInput, ScrollView, InteractionManager
+  Platform, Modal, TouchableOpacity, TextInput, ScrollView, InteractionManager,
+  Dimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as SecureStore from 'expo-secure-store';
@@ -19,6 +20,11 @@ const MASTER_TYPES = [
   'coat','blazer','cardigan','sneakers','shoes','boots',
   'bag','hat','scarf','accessory'
 ];
+
+const { width } = Dimensions.get('window');
+const COLS = 3;
+const GAP = 10;
+const TILE = Math.floor((width - 24 /* page paddings */ - GAP * (COLS - 1)) / COLS);
 
 export default function WardrobeScreen() {
   const [items, setItems] = useState([]);
@@ -175,6 +181,7 @@ export default function WardrobeScreen() {
     }
   }, [typeModalOpen, pendingType]);
 
+  // --- UI helpers ---
   const Chip = ({ active, label, count, onPress }) => (
     <TouchableOpacity
       onPress={onPress}
@@ -197,26 +204,27 @@ export default function WardrobeScreen() {
     </TouchableOpacity>
   );
 
-  const renderCard = ({ item }) => {
-    const img = item.image_url || item.imageUrl || item.url;
-    const label = item.item_type || item.itemType || 'unknown';
-    return (
-      <TouchableOpacity
-        style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}
-        onPress={() => setPreview({ open: true, url: img, label })}
-      >
-        <Image
-          source={{ uri: img }}
-          style={{ width: 72, height: 72, borderRadius: 8, backgroundColor: '#eee', marginRight: 12 }}
-        />
-        <Text>{label}</Text>
-      </TouchableOpacity>
-    );
-  };
+  const GridItem = ({ uri, label }) => (
+    <TouchableOpacity
+      onPress={() => setPreview({ open: true, url: uri, label })}
+      style={{ width: TILE, height: TILE, borderRadius: 10, overflow: 'hidden', backgroundColor: '#eee' }}
+    >
+      <Image source={{ uri }} style={{ width: '100%', height: '100%' }} />
+    </TouchableOpacity>
+  );
 
-  // make header sit lower; keep list stuck to top
-  const topInset =
-    (Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0) + 18;
+  // group items for the "All" view
+  const grouped = useMemo(() => {
+    const map = {};
+    for (const it of items) {
+      const t = (it.item_type || it.itemType || 'unknown').toLowerCase();
+      (map[t] ||= []).push(it);
+    }
+    return map;
+  }, [items]);
+
+  // layout tweaks
+  const topInset = (Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0) + 18;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
@@ -224,12 +232,13 @@ export default function WardrobeScreen() {
         {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
           <TextInput
-            placeholder="Search type in wardrobe…"
+            placeholder="Search by type"
             value={searchQuery}
             onChangeText={setSearchQuery}
             style={{
-              flex: 1, height: 36, borderWidth: 1, borderColor: '#ccc',
-              borderRadius: 8, paddingHorizontal: 10, marginRight: 8
+              flex: 1, height: 42, borderWidth: 1, borderColor: '#ccc',
+              borderRadius: 8, paddingHorizontal: 12, paddingVertical: Platform.OS === 'ios' ? 8 : 6,
+              fontSize: 16, lineHeight: 20, textAlignVertical: 'center', marginRight: 8
             }}
           />
           <Button title="Add item from gallery" onPress={askTypeThenUpload} />
@@ -259,27 +268,49 @@ export default function WardrobeScreen() {
           ))}
         </ScrollView>
 
-        {/* List pinned to the top */}
+        {/* Content */}
         {loading ? (
-          <View style={{ flex: 1, justifyContent: 'center' }}>
-            <ActivityIndicator />
-          </View>
+          <View style={{ flex: 1, justifyContent: 'center' }}><ActivityIndicator /></View>
+        ) : filterType === 'all' ? (
+          // Grouped gallery for "All"
+          <ScrollView
+            contentContainerStyle={{ paddingBottom: 24 }}
+            showsVerticalScrollIndicator={false}
+          >
+            {existingTypes.map((t) => (
+              <View key={t} style={{ marginBottom: 16 }}>
+                <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8, textTransform: 'capitalize' }}>
+                  {t}
+                </Text>
+                <FlatList
+                  data={grouped[t] || []}
+                  keyExtractor={(it) => String(it.id || it.image_url || it.imageUrl)}
+                  renderItem={({ item }) => (
+                    <GridItem uri={item.image_url || item.imageUrl || item.url} label={t} />
+                  )}
+                  numColumns={COLS}
+                  columnWrapperStyle={{ gap: GAP }}
+                  ItemSeparatorComponent={() => <View style={{ height: GAP }} />}
+                  scrollEnabled={false}
+                />
+              </View>
+            ))}
+            {existingTypes.length === 0 && (
+              <Text style={{ textAlign: 'center', marginTop: 24 }}>No items yet.</Text>
+            )}
+          </ScrollView>
         ) : (
+          // Plain grid when a single type is selected
           <FlatList
             data={filteredItems}
             keyExtractor={(it) => String(it.id || it.image_url || it.imageUrl)}
-            renderItem={renderCard}
-            contentContainerStyle={{
-              paddingTop: 0,
-              paddingBottom: 24,
-              flexGrow: 0,            // <-- keep rows at the very top
-            }}
-            removeClippedSubviews
-            initialNumToRender={8}
-            windowSize={5}
-            ListEmptyComponent={
-              <Text style={{ textAlign: 'center', marginTop: 24 }}>No items yet.</Text>
-            }
+            renderItem={({ item }) => (
+              <GridItem uri={item.image_url || item.imageUrl || item.url} label={filterType} />
+            )}
+            numColumns={COLS}
+            columnWrapperStyle={{ gap: GAP }}
+            ItemSeparatorComponent={() => <View style={{ height: GAP }} />}
+            contentContainerStyle={{ paddingBottom: 24 }}
           />
         )}
       </View>
