@@ -8,6 +8,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
@@ -26,9 +27,10 @@ const { width } = Dimensions.get('window');
 const COLS = 3;
 const GAP = 10;
 const TILE = Math.floor((width - 24 - GAP * (COLS - 1)) / COLS);
-const BOTTOM_BAR_HEIGHT = 64; // <- controls overlay height
+const BOTTOM_BAR_HEIGHT = 64;
 
 export default function WardrobeScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -51,7 +53,8 @@ export default function WardrobeScreen({ navigation }) {
       const res = await api.get('/wardrobe', {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setItems(res.data?.items || res.data || []);
+      const all = res.data?.items || res.data || [];
+      setItems(all.filter(it => (it.item_type || it.itemType) !== 'profile'));
     } catch (e) {
       console.log('fetchWardrobe error:', e?.response?.data || e.message);
       Alert.alert('Error', 'Failed to load wardrobe');
@@ -213,8 +216,8 @@ export default function WardrobeScreen({ navigation }) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
-      {/* add paddingBottom equal to bar height so content doesn't hide under it */}
-      <View style={{ flex: 1, paddingHorizontal: 12, paddingBottom: BOTTOM_BAR_HEIGHT + 8, paddingTop: topInset }}>
+      {/* Add padding at the bottom so content doesn't hide under the bar */}
+      <View style={{ flex: 1, paddingHorizontal: 12, paddingBottom: BOTTOM_BAR_HEIGHT + 12, paddingTop: topInset }}>
         {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
           <TextInput
@@ -318,17 +321,28 @@ export default function WardrobeScreen({ navigation }) {
           />
         )}
       </View>
-
-      {/* Single bottom button */}
       <View
         style={{
-          position: 'absolute', left: 0, right: 0, bottom: 0,
+          position: 'absolute', left: 0, right: 0, bottom: insets.bottom,
           height: BOTTOM_BAR_HEIGHT, backgroundColor: '#fff',
           borderTopWidth: 1, borderTopColor: '#e5e7eb',
-          paddingHorizontal: 16, paddingVertical: 10, justifyContent: 'center'
+          paddingHorizontal: 16, paddingVertical: 10, justifyContent: 'center',
+          zIndex: 1000, elevation: 8,
         }}
       >
-        <Button title="Create look" onPress={() => navigation.navigate('CreateLook')} />
+        <TouchableOpacity
+          onPress={() => navigation.navigate('CreateLook')}
+          activeOpacity={0.85}
+          style={{
+            height: 44,
+            borderRadius: 10,
+            backgroundColor: '#1976D2',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>CREATE LOOK</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Type select modal */}
