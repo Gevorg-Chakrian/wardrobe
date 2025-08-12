@@ -26,6 +26,7 @@ const { width } = Dimensions.get('window');
 const COLS = 3;
 const GAP = 10;
 const TILE = Math.floor((width - 24 - GAP * (COLS - 1)) / COLS);
+const BOTTOM_BAR_HEIGHT = 64; // <- controls overlay height
 
 export default function WardrobeScreen({ navigation }) {
   const [items, setItems] = useState([]);
@@ -190,7 +191,7 @@ export default function WardrobeScreen({ navigation }) {
     </TouchableOpacity>
   );
 
-  const GridItem = ({ uri, label, onPress }) => (
+  const GridItem = ({ uri, onPress }) => (
     <TouchableOpacity
       onPress={onPress}
       style={{ width: TILE, height: TILE, borderRadius: 10, overflow: 'hidden', backgroundColor: '#eee' }}
@@ -212,7 +213,9 @@ export default function WardrobeScreen({ navigation }) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
-      <View style={{ flex: 1, paddingHorizontal: 12, paddingBottom: 12, paddingTop: topInset }}>
+      {/* add paddingBottom equal to bar height so content doesn't hide under it */}
+      <View style={{ flex: 1, paddingHorizontal: 12, paddingBottom: BOTTOM_BAR_HEIGHT + 8, paddingTop: topInset }}>
+        {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
           <TextInput
             placeholder="Search by type"
@@ -227,6 +230,7 @@ export default function WardrobeScreen({ navigation }) {
           <Button title="Add item from gallery" onPress={askTypeThenUpload} />
         </View>
 
+        {/* Chips */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -250,6 +254,7 @@ export default function WardrobeScreen({ navigation }) {
           ))}
         </ScrollView>
 
+        {/* Content */}
         {loading ? (
           <View style={{ flex: 1, justifyContent: 'center' }}><ActivityIndicator /></View>
         ) : filterType === 'all' ? (
@@ -257,7 +262,7 @@ export default function WardrobeScreen({ navigation }) {
             contentContainerStyle={{ paddingBottom: 24 }}
             showsVerticalScrollIndicator={false}
           >
-            {existingTypes.map((t) => (
+            {Object.keys(grouped).sort().map((t) => (
               <View key={t} style={{ marginBottom: 16 }}>
                 <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8, textTransform: 'capitalize' }}>
                   {t}
@@ -268,7 +273,6 @@ export default function WardrobeScreen({ navigation }) {
                   renderItem={({ item }) => (
                     <GridItem
                       uri={item.image_url || item.imageUrl || item.url}
-                      label={t}
                       onPress={() =>
                         navigation.navigate('AddItemDetails', {
                           itemId: item.id,
@@ -286,7 +290,7 @@ export default function WardrobeScreen({ navigation }) {
                 />
               </View>
             ))}
-            {existingTypes.length === 0 && (
+            {items.length === 0 && (
               <Text style={{ textAlign: 'center', marginTop: 24 }}>No items yet.</Text>
             )}
           </ScrollView>
@@ -297,7 +301,6 @@ export default function WardrobeScreen({ navigation }) {
             renderItem={({ item }) => (
               <GridItem
                 uri={item.image_url || item.imageUrl || item.url}
-                label={filterType}
                 onPress={() =>
                   navigation.navigate('AddItemDetails', {
                     itemId: item.id,
@@ -316,6 +319,19 @@ export default function WardrobeScreen({ navigation }) {
         )}
       </View>
 
+      {/* Single bottom button */}
+      <View
+        style={{
+          position: 'absolute', left: 0, right: 0, bottom: 0,
+          height: BOTTOM_BAR_HEIGHT, backgroundColor: '#fff',
+          borderTopWidth: 1, borderTopColor: '#e5e7eb',
+          paddingHorizontal: 16, paddingVertical: 10, justifyContent: 'center'
+        }}
+      >
+        <Button title="Create look" onPress={() => navigation.navigate('CreateLook')} />
+      </View>
+
+      {/* Type select modal */}
       <Modal
         visible={typeModalOpen}
         animationType="slide"

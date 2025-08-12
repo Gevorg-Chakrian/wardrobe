@@ -11,7 +11,7 @@ import { API_BASE_URL } from '../api/config';
 const api = axios.create({ baseURL: API_BASE_URL });
 
 const TAGS = {
-  color: ['black','white','gray','beige','brown','navy','blue','green','yellow','orange','red','pink','purple','gold','silver','multicolor'],
+  color: ['black','white','gray','beige','brown','navy','blue','green','yellow','orange','red','pink','purple','gold','silver'],
   season: ['spring','summer','autumn','winter','all-season'],
   fit: ['oversized','slim','regular','cropped','longline','boxy','tailored'],
   occasion: ['casual','work','formal','sport','streetwear','beach','loungewear'],
@@ -65,7 +65,6 @@ export default function AddItemScreen({ navigation, route }) {
   const itemId      = route.params?.itemId || null;
   const existing    = route.params?.existingTags || {};
 
-  // prefill when editing
   const initialSelected = {
     color:     toArray(existing.color),
     season:    toArray(existing.season),
@@ -79,7 +78,6 @@ export default function AddItemScreen({ navigation, route }) {
   const [saving, setSaving] = useState(false);
   const [selected, setSelected] = useState(itemId ? initialSelected : emptySel);
 
-  // generic toggler; for color we enforce max 2
   const toggle = (cat, value, max = Infinity) => {
     setSelected((prev) => {
       const curr = prev[cat] || [];
@@ -94,12 +92,11 @@ export default function AddItemScreen({ navigation, route }) {
     });
   };
 
-  // require at least 1 for every category EXCEPT "feature"
   const REQUIRED_CATS = Object.keys(TAGS).filter(k => k !== 'feature');
   const isValid = useMemo(() => {
     return REQUIRED_CATS.every((k) => (selected[k] || []).length > 0)
-           && (selected.color || []).length > 0   // explicit, since color is special
-           && (selected.color || []).length <= 2; // cap already enforced, but keep guard
+           && (selected.color || []).length > 0
+           && (selected.color || []).length <= 2;
   }, [selected]);
 
   const onSave = async () => {
@@ -112,14 +109,12 @@ export default function AddItemScreen({ navigation, route }) {
       const token = await SecureStore.getItemAsync('token');
 
       if (itemId) {
-        // EDIT
         await api.put(
           `/wardrobe/${itemId}`,
           { item_type: initialType, tags: selected },
           { headers: { Authorization: `Bearer ${token}` } }
         );
       } else {
-        // ADD
         await api.post(
           '/wardrobe',
           { image_url: imageUrl, item_type: initialType, tags: selected },
@@ -145,11 +140,24 @@ export default function AddItemScreen({ navigation, route }) {
           <Image source={{ uri: imageUrl }} style={{ width: '100%', height: '100%', resizeMode: 'contain' }} />
         </View>
 
-        {/* sections */}
+        {/* color swatches */}
         <Section title={TITLES.color}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
             {TAGS.color.map((c) => (
-              <Chip key={c} label={c} active={selected.color.includes(c)} onPress={() => toggle('color', c, 2)} />
+              <TouchableOpacity
+                key={c}
+                onPress={() => toggle('color', c, 2)}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  marginRight: 10,
+                  marginBottom: 10,
+                  backgroundColor: c,
+                  borderWidth: selected.color.includes(c) ? 3 : 1,
+                  borderColor: selected.color.includes(c) ? '#1976D2' : '#ccc',
+                }}
+              />
             ))}
           </View>
         </Section>
