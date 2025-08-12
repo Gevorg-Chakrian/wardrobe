@@ -194,9 +194,11 @@ export default function WardrobeScreen({ navigation }) {
     </TouchableOpacity>
   );
 
-  const GridItem = ({ uri, onPress }) => (
+  const GridItem = ({ uri, onPress, onLongPress }) => (
     <TouchableOpacity
       onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={400}
       style={{ width: TILE, height: TILE, borderRadius: 10, overflow: 'hidden', backgroundColor: '#eee' }}
     >
       <Image source={{ uri }} style={{ width: '100%', height: '100%' }} />
@@ -284,6 +286,30 @@ export default function WardrobeScreen({ navigation }) {
                           existingTags: item.tags || {},
                         })
                       }
+                      onLongPress={() => {
+                        Alert.alert(
+                          "Delete Item",
+                          "Are you sure you want to delete this item?",
+                          [
+                            { text: "Cancel", style: "cancel" },
+                            {
+                              text: "Delete",
+                              style: "destructive",
+                              onPress: async () => {
+                                try {
+                                  const token = await SecureStore.getItemAsync('token');
+                                  await api.delete(`/wardrobe/${item.id}`, {
+                                    headers: { Authorization: `Bearer ${token}` },
+                                  });
+                                  fetchWardrobe(); // refresh after deletion
+                                } catch (e) {
+                                  Alert.alert('Failed to delete', e?.response?.data?.message || e.message || 'Please try again.');
+                                }
+                              }
+                            }
+                          ]
+                        );
+                      }}
                     />
                   )}
                   numColumns={COLS}

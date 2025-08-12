@@ -178,7 +178,47 @@ export default function AddItemScreen({ navigation, route }) {
         ))}
 
         <View style={{ height: 16 }} />
-        <Button title={saving ? 'Saving…' : (itemId ? 'Save changes' : 'Save item')} onPress={onSave} disabled={saving} />
+        <Button
+          title={saving ? 'Saving…' : (itemId ? 'Save changes' : 'Save item')}
+          onPress={onSave}
+          disabled={saving}
+        />
+
+        {itemId && (
+          <>
+            <View style={{ height: 16 }} />
+            <Button
+              title="Delete item"
+              color="red"
+              onPress={() => {
+                Alert.alert(
+                  "Delete Item",
+                  "Are you sure you want to delete this item?",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                      text: "Delete",
+                      style: "destructive",
+                      onPress: async () => {
+                        try {
+                          const token = await SecureStore.getItemAsync('token');
+                          await api.delete(`/wardrobe/${itemId}`, {
+                            headers: { Authorization: `Bearer ${token}` },
+                          });
+                          Alert.alert("Deleted", "Item removed from your wardrobe.");
+                          navigation.goBack();
+                        } catch (e) {
+                          console.log('delete item error:', e?.response?.data || e.message);
+                          Alert.alert('Failed to delete', e?.response?.data?.message || e.message || 'Please try again.');
+                        }
+                      }
+                    }
+                  ]
+                );
+              }}
+            />
+          </>
+        )}
         <View style={{ height: 24 }} />
       </ScrollView>
     </SafeAreaView>
