@@ -94,6 +94,20 @@ export default function CreateLookScreen() {
     }
   };
 
+  const deleteBasePhoto = async (photoId) => {
+    try {
+      const token = await getToken();
+      await api.delete(`/wardrobe/${photoId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setSelectedBase(curr => (curr?.id === photoId ? null : curr));
+      await fetchWardrobe();
+    } catch (e) {
+      console.log('delete base photo error:', e?.response?.data || e.message);
+      Alert.alert('Failed to delete', e?.response?.data?.message || e.message || 'Please try again.');
+    }
+  };
+
   const handlePick = (type, id) => {
     setPickedByType(prev => ({ ...prev, [type]: id }));
     setExpandedType(null); // close after pick
@@ -117,6 +131,7 @@ export default function CreateLookScreen() {
             flexDirection: 'row',
             alignItems: 'center'
           }}
+          activeOpacity={0.85}
         >
           <Text style={{
             color: expanded ? '#fff' : '#000',
@@ -152,6 +167,7 @@ export default function CreateLookScreen() {
                     borderColor: '#1976D2',
                     backgroundColor: '#eee'
                   }}
+                  activeOpacity={0.85}
                 >
                   <Image source={{ uri }} style={{ width: '100%', height: '100%' }} />
                 </TouchableOpacity>
@@ -178,16 +194,36 @@ export default function CreateLookScreen() {
           ) : (
             basePhotos.map((p) => {
               const uri = p.image_url || p.imageUrl || p.url;
+              const isSelected = selectedBase?.id === p.id;
+
+              const confirmDelete = () => {
+                Alert.alert(
+                  'Delete base photo',
+                  'Are you sure you want to delete this photo?',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Delete', style: 'destructive', onPress: () => deleteBasePhoto(p.id) },
+                  ]
+                );
+              };
+
               return (
-                <TouchableOpacity key={p.id} onPress={() => setSelectedBase({ id: p.id, url: uri })} style={{ marginRight: 10 }}>
+                <TouchableOpacity
+                  key={p.id}
+                  onPress={() => setSelectedBase({ id: p.id, url: uri })}
+                  onLongPress={confirmDelete}
+                  delayLongPress={400}
+                  style={{ marginRight: 10 }}
+                  activeOpacity={0.85}
+                >
                   <Image
                     source={{ uri }}
                     style={{
                       width: 110,
                       height: 110,
                       borderRadius: 10,
-                      borderWidth: selectedBase?.id === p.id ? 3 : 1,
-                      borderColor: selectedBase?.id === p.id ? '#1976D2' : '#ddd'
+                      borderWidth: isSelected ? 3 : 1,
+                      borderColor: isSelected ? '#1976D2' : '#ddd'
                     }}
                   />
                 </TouchableOpacity>
