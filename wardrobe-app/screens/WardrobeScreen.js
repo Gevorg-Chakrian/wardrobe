@@ -1,16 +1,14 @@
 // screens/WardrobeScreen.js
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import {
-  SafeAreaView,
-  StatusBar,
-  View, Text, FlatList, Image, Button, Alert, ActivityIndicator,
-  Platform, Modal, TouchableOpacity, TextInput, ScrollView, InteractionManager,
-  Dimensions,
+  SafeAreaView, StatusBar, View, Text, FlatList, Image, Button, Alert, ActivityIndicator,
+  Platform, Modal, TouchableOpacity, TextInput, ScrollView, InteractionManager, Dimensions
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as SecureStore from 'expo-secure-store';
+import BottomNav, { BOTTOM_NAV_HEIGHT } from '../components/BottomNav';
 import axios from 'axios';
 import { API_BASE_URL } from '../api/config';
 
@@ -23,19 +21,21 @@ const MASTER_TYPES = [
   'bag','hat','scarf','accessory'
 ];
 
-const { width } = Dimensions.get('window');
-const COLS = 3;
-const GAP = 10;
-const TILE = Math.floor((width - 24 - GAP * (COLS - 1)) / COLS);
-const BOTTOM_BAR_HEIGHT = 64;
+const { width: SCREEN_W } = Dimensions.get('window');
+const PAGE_SIDE_PADDING = 12;
+const PAGE_W = SCREEN_W;
+const COLS = 2;
+const ROW_GAP = 12;
+
+const TILE_W = Math.floor((SCREEN_W - PAGE_SIDE_PADDING * 2 - ROW_GAP) / COLS);
 
 export default function WardrobeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const [filterType, setFilterType] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchModalOpen, setSearchModalOpen] = useState(false);
 
   const [typeModalOpen, setTypeModalOpen] = useState(false);
   const [typeSearch, setTypeSearch] = useState('');
@@ -43,6 +43,9 @@ export default function WardrobeScreen({ navigation }) {
 
   const [isPicking, setIsPicking] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+
+  const pagesRef = useRef(null);
+  const [activeIndex, setActiveIndex] = useState(0);
 
   const getToken = async () => SecureStore.getItemAsync('token');
 
@@ -65,55 +68,52 @@ export default function WardrobeScreen({ navigation }) {
 
   useFocusEffect(useCallback(() => { fetchWardrobe(); }, [fetchWardrobe]));
 
-  const typeCounts = useMemo(() => {
-    const counts = {};
+  const grouped = useMemo(() => {
+    const map = {};
     for (const it of items) {
       const t = (it.item_type || it.itemType || 'unknown').toLowerCase();
-      counts[t] = (counts[t] || 0) + 1;
+      (map[t] ||= []).push(it);
     }
-    return counts;
+    return map;
   }, [items]);
 
-  const existingTypes = useMemo(() => Object.keys(typeCounts).sort(), [typeCounts]);
+  const typeList = useMemo(() => Object.keys(grouped).sort(), [grouped]);
+  const pages = useMemo(() => ['all', ...typeList], [typeList]);
+
+  const scrollToIndex = (index) => {
+    if (!pagesRef.current) return;
+    setActiveIndex(index);
+    pagesRef.current.scrollToIndex({ index, animated: true });
+  };
+
+  const goToType = (type) => {
+    const idx = pages.findIndex((t) => t.toLowerCase() === type.toLowerCase());
+    if (idx >= 0) scrollToIndex(idx);
+  };
 
   useEffect(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) { setFilterType('all'); return; }
-    const match = existingTypes.find(t => t.includes(q));
-    setFilterType(match || 'all');
-  }, [searchQuery, existingTypes]);
-
-  const filteredItems = useMemo(() => {
-    if (filterType === 'all') return items;
-    return items.filter(
-      it => (it.item_type || it.itemType || '').toLowerCase() === filterType
-    );
-  }, [items, filterType]);
-
-  const askTypeThenUpload = () => {
-    setTypeSearch('');
-    setTypeModalOpen(true);
-  };
+    if (!q) return;
+    const exact = pages.find((t) => t.toLowerCase() === q);
+    const partial = pages.find((t) => t.toLowerCase().includes(q));
+    goToType(exact || partial || 'all');
+  }, [searchQuery, pages]);
 
   const afterInteractions = () =>
     new Promise(r => InteractionManager.runAfterInteractions(r));
 
-  const doPickAndUpload = async (chosenType) => {
-    if (!chosenType) return;
-    if (isPicking || isUploading) return;
+  const askTypeThenUpload = () => { setTypeSearch(''); setTypeModalOpen(true); };
 
+  const doPickAndUpload = async (chosenType) => {
+    if (!chosenType || isPicking || isUploading) return;
     setIsPicking(true);
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
-        Alert.alert('Permission required', 'We need access to your gallery.');
-        return;
-      }
+      if (!perm.granted) { Alert.alert('Permission required', 'We need access to your gallery.'); return; }
 
       const mediaType = ImagePicker.MediaType?.Images ?? ImagePicker.MediaTypeOptions.Images;
       const picked = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: mediaType,
-        quality: 0.9,
+        mediaTypes: mediaType, quality: 0.9,
         presentationStyle: Platform.OS === 'ios' ? 'fullScreen' : undefined,
         allowsMultipleSelection: false,
       });
@@ -132,10 +132,7 @@ export default function WardrobeScreen({ navigation }) {
 
       setIsUploading(true);
       const uploadRes = await api.post('/upload', form, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data',
-        },
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
       });
 
       const { image_url, item_type, url, type: detected } = uploadRes.data || {};
@@ -172,238 +169,164 @@ export default function WardrobeScreen({ navigation }) {
     }
   }, [typeModalOpen, pendingType]);
 
-  const Chip = ({ active, label, count, onPress }) => (
-    <TouchableOpacity
-      onPress={onPress}
-      style={{
-        paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16,
-        marginRight: 8, backgroundColor: active ? '#1976D2' : '#eee',
-        flexDirection: 'row', alignItems: 'center', height: 32
-      }}
-    >
-      <Text style={{ color: active ? '#fff' : '#333' }}>{label}</Text>
-      {typeof count === 'number' && (
-        <View style={{
-          marginLeft: 6, minWidth: 18, paddingHorizontal: 6, height: 20,
-          borderRadius: 10, backgroundColor: active ? 'rgba(255,255,255,0.25)' : '#ddd',
-          alignItems: 'center', justifyContent: 'center'
-        }}>
-          <Text style={{ fontSize: 12, color: active ? '#fff' : '#333' }}>{count}</Text>
-        </View>
-      )}
-    </TouchableOpacity>
-  );
-
   const GridItem = ({ uri, onPress, onLongPress }) => (
     <TouchableOpacity
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={400}
-      style={{ width: TILE, height: TILE, borderRadius: 10, overflow: 'hidden', backgroundColor: '#eee' }}
+      style={{
+        width: TILE_W,
+        height: TILE_W,
+        borderRadius: 12,
+        overflow: 'hidden',
+        backgroundColor: '#eee',
+        marginBottom: ROW_GAP,
+      }}
+      activeOpacity={0.85}
     >
       <Image source={{ uri }} style={{ width: '100%', height: '100%' }} />
     </TouchableOpacity>
   );
 
-  const grouped = useMemo(() => {
-    const map = {};
-    for (const it of items) {
-      const t = (it.item_type || it.itemType || 'unknown').toLowerCase();
-      (map[t] ||= []).push(it);
-    }
-    return map;
-  }, [items]);
+  const getPageLayout = (_, index) => ({
+    length: PAGE_W,
+    offset: PAGE_W * index,
+    index,
+  });
 
   const topInset = (Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0) + 18;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
-      {/* Add padding at the bottom so content doesn't hide under the bar */}
-      <View style={{ flex: 1, paddingHorizontal: 12, paddingBottom: BOTTOM_BAR_HEIGHT + 12, paddingTop: topInset }}>
-        {/* Header */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-          <TextInput
-            placeholder="Search by type"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            style={{
-              flex: 1, height: 42, borderWidth: 1, borderColor: '#ccc',
-              borderRadius: 8, paddingHorizontal: 12, paddingVertical: Platform.OS === 'ios' ? 8 : 6,
-              fontSize: 16, lineHeight: 20, textAlignVertical: 'center', marginRight: 8
-            }}
-          />
-          <Button title="Add item from gallery" onPress={askTypeThenUpload} />
+      {/* Top controls */}
+      <View style={{ paddingTop: topInset, paddingHorizontal: PAGE_SIDE_PADDING }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+          <TouchableOpacity
+            onPress={askTypeThenUpload}
+            style={{ backgroundColor: '#1976D2', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8 }}
+            activeOpacity={0.9}
+          >
+            <Text style={{ color: '#fff', fontWeight: '600' }}>Add Item</Text>
+          </TouchableOpacity>
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity
+            onPress={() => setSearchModalOpen(true)}
+            style={{ width: 42, height: 42, borderRadius: 8, borderWidth: 1, borderColor: '#ccc', alignItems: 'center', justifyContent: 'center' }}
+            activeOpacity={0.8}
+          >
+            <Text style={{ fontSize: 20 }}>🔍</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Chips */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingVertical: 4 }}
-          style={{ marginBottom: 6 }}
-        >
-          <Chip
-            label="all"
-            active={filterType === 'all'}
-            count={items.length}
-            onPress={() => { setFilterType('all'); setSearchQuery(''); }}
-          />
-          {Object.keys(typeCounts).sort().map(t => (
-            <Chip
-              key={t}
-              label={t}
-              active={filterType === t}
-              count={typeCounts[t]}
-              onPress={() => { setFilterType(t); setSearchQuery(''); }}
-            />
-          ))}
-        </ScrollView>
-
-        {/* Content */}
-        {loading ? (
-          <View style={{ flex: 1, justifyContent: 'center' }}><ActivityIndicator /></View>
-        ) : filterType === 'all' ? (
-          <ScrollView
-            contentContainerStyle={{ paddingBottom: 24 }}
-            showsVerticalScrollIndicator={false}
-          >
-            {Object.keys(grouped).sort().map((t) => (
-              <View key={t} style={{ marginBottom: 16 }}>
-                <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8, textTransform: 'capitalize' }}>
+        {/* Tabs */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 6 }}>
+          {(['all', ...typeList]).map((t, i) => {
+            const active = i === activeIndex;
+            return (
+              <TouchableOpacity key={t} onPress={() => scrollToIndex(i)} style={{ marginRight: 18, alignItems: 'center' }}>
+                <Text style={{ fontSize: 16, fontWeight: active ? '700' : '600', textTransform: 'capitalize', color: active ? '#000' : '#666' }}>
                   {t}
                 </Text>
-                <FlatList
-                  data={grouped[t] || []}
-                  keyExtractor={(it) => String(it.id || it.image_url || it.imageUrl)}
-                  renderItem={({ item }) => (
-                    <GridItem
-                      uri={item.image_url || item.imageUrl || item.url}
-                      onPress={() =>
-                        navigation.navigate('AddItemDetails', {
-                          itemId: item.id,
-                          imageUrl: item.image_url || item.imageUrl || item.url,
-                          initialType: (item.item_type || item.itemType || 'tshirt').toLowerCase(),
-                          existingTags: item.tags || {},
-                        })
-                      }
-                      onLongPress={() => {
-                        Alert.alert(
-                          "Delete Item",
-                          "Are you sure you want to delete this item?",
-                          [
-                            { text: "Cancel", style: "cancel" },
-                            {
-                              text: "Delete",
-                              style: "destructive",
-                              onPress: async () => {
-                                try {
-                                  const token = await SecureStore.getItemAsync('token');
-                                  await api.delete(`/wardrobe/${item.id}`, {
-                                    headers: { Authorization: `Bearer ${token}` },
-                                  });
-                                  fetchWardrobe(); // refresh after deletion
-                                } catch (e) {
-                                  Alert.alert('Failed to delete', e?.response?.data?.message || e.message || 'Please try again.');
-                                }
-                              }
-                            }
-                          ]
-                        );
-                      }}
-                    />
-                  )}
-                  numColumns={COLS}
-                  columnWrapperStyle={{ gap: GAP }}
-                  ItemSeparatorComponent={() => <View style={{ height: GAP }} />}
-                  scrollEnabled={false}
-                />
-              </View>
-            ))}
-            {items.length === 0 && (
-              <Text style={{ textAlign: 'center', marginTop: 24 }}>No items yet.</Text>
-            )}
-          </ScrollView>
+                <View style={{ height: 3, marginTop: 6, width: active ? 22 : 0, backgroundColor: '#1976D2', borderRadius: 3 }} />
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* Carousel pages */}
+      <View style={{ flex: 1 }}>
+        {loading ? (
+          <View style={{ flex: 1, justifyContent: 'center' }}><ActivityIndicator /></View>
         ) : (
           <FlatList
-            data={filteredItems}
-            keyExtractor={(it) => String(it.id || it.image_url || it.imageUrl)}
-            renderItem={({ item }) => (
-              <GridItem
-                uri={item.image_url || item.imageUrl || item.url}
-                onPress={() =>
-                  navigation.navigate('AddItemDetails', {
-                    itemId: item.id,
-                    imageUrl: item.image_url || item.imageUrl || item.url,
-                    initialType: (item.item_type || item.itemType || 'tshirt').toLowerCase(),
-                    existingTags: item.tags || {},
-                  })
-                }
-              />
-            )}
-            numColumns={COLS}
-            columnWrapperStyle={{ gap: GAP }}
-            ItemSeparatorComponent={() => <View style={{ height: GAP }} />}
-            contentContainerStyle={{ paddingBottom: 24 }}
+            ref={pagesRef}
+            data={['all', ...typeList]}
+            keyExtractor={(t) => t}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            getItemLayout={getPageLayout}
+            onMomentumScrollEnd={(e) => {
+              const index = Math.round(e.nativeEvent.contentOffset.x / PAGE_W);
+              setActiveIndex(index);
+            }}
+            renderItem={({ item: pageKey }) => {
+              const title = pageKey === 'all' ? 'All' : pageKey.charAt(0).toUpperCase() + pageKey.slice(1);
+              const data = pageKey === 'all' ? items : (grouped[pageKey] || []);
+              return (
+                <View style={{ width: PAGE_W, paddingHorizontal: PAGE_SIDE_PADDING }}>
+                  <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 10 }}>{title}</Text>
+                  <FlatList
+                    data={data}
+                    keyExtractor={(it) => String(it.id || it.image_url || it.imageUrl)}
+                    numColumns={COLS}
+                    columnWrapperStyle={{ justifyContent: 'space-between' }}
+                    renderItem={({ item }) => (
+                      <GridItem
+                        uri={item.image_url || item.imageUrl || item.url}
+                        onPress={() =>
+                          navigation.navigate('AddItemDetails', {
+                            itemId: item.id,
+                            imageUrl: item.image_url || item.imageUrl || item.url,
+                            initialType: (item.item_type || item.itemType || 'tshirt').toLowerCase(),
+                            existingTags: item.tags || {},
+                          })
+                        }
+                        onLongPress={() => {
+                          Alert.alert(
+                            'Delete Item',
+                            'Are you sure you want to delete this item?',
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              {
+                                text: 'Delete',
+                                style: 'destructive',
+                                onPress: async () => {
+                                  try {
+                                    const token = await SecureStore.getItemAsync('token');
+                                    await api.delete(`/wardrobe/${item.id}`, {
+                                      headers: { Authorization: `Bearer ${token}` },
+                                    });
+                                    fetchWardrobe();
+                                  } catch (e) {
+                                    Alert.alert('Failed to delete', e?.response?.data?.message || e.message || 'Please try again.');
+                                  }
+                                },
+                              },
+                            ]
+                          );
+                        }}
+                      />
+                    )}
+                    contentContainerStyle={{ paddingBottom: BOTTOM_NAV_HEIGHT + insets.bottom + 12 }}
+                  />
+                </View>
+              );
+            }}
           />
         )}
       </View>
-      <View
-        style={{
-          position: 'absolute', left: 0, right: 0, bottom: insets.bottom,
-          height: BOTTOM_BAR_HEIGHT, backgroundColor: '#fff',
-          borderTopWidth: 1, borderTopColor: '#e5e7eb',
-          paddingHorizontal: 16, paddingVertical: 10, justifyContent: 'center',
-          zIndex: 1000, elevation: 8,
-        }}
-      >
-        <TouchableOpacity
-          onPress={() => navigation.navigate('CreateLook')}
-          activeOpacity={0.85}
-          style={{
-            height: 44,
-            borderRadius: 10,
-            backgroundColor: '#1976D2',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>CREATE LOOK</Text>
-        </TouchableOpacity>
-      </View>
 
-      {/* Type select modal */}
-      <Modal
-        visible={typeModalOpen}
-        animationType="slide"
-        transparent
-        onDismiss={handleModalDismiss}
-      >
+      {/* Bottom Menu */}
+      <BottomNav navigation={navigation} active="wardrobe" />
+
+      {/* Upload type picker */}
+      <Modal visible={typeModalOpen} animationType="slide" transparent onDismiss={handleModalDismiss}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }}>
-          <View style={{
-            backgroundColor: '#fff', padding: 16, paddingBottom: 24,
-            borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '75%'
-          }}>
+          <View style={{ backgroundColor: '#fff', padding: 16, paddingBottom: 24, borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '75%' }}>
             <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8 }}>Pick a type</Text>
             <TextInput
               placeholder="Search types to upload…"
               value={typeSearch}
               onChangeText={setTypeSearch}
-              style={{
-                height: 36, borderWidth: 1, borderColor: '#ccc',
-                borderRadius: 8, paddingHorizontal: 10, marginBottom: 10
-              }}
+              style={{ height: 36, borderWidth: 1, borderColor: '#ccc', borderRadius: 8, paddingHorizontal: 10, marginBottom: 10 }}
             />
             <FlatList
               data={MASTER_TYPES.filter(t => t.includes(typeSearch.trim().toLowerCase()))}
               keyExtractor={(t) => t}
               renderItem={({ item }) => (
-                <TouchableOpacity
-                  onPress={() => {
-                    setPendingType(item);
-                    setTypeModalOpen(false);
-                  }}
-                  style={{ paddingVertical: 10 }}
-                >
+                <TouchableOpacity onPress={() => { setPendingType(item); setTypeModalOpen(false); }} style={{ paddingVertical: 10 }}>
                   <Text style={{ fontSize: 16 }}>{item}</Text>
                 </TouchableOpacity>
               )}
@@ -411,6 +334,30 @@ export default function WardrobeScreen({ navigation }) {
             />
             <View style={{ height: 8 }} />
             <Button title="Close" onPress={() => setTypeModalOpen(false)} />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Search modal */}
+      <Modal visible={searchModalOpen} transparent animationType="fade" onRequestClose={() => setSearchModalOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.25)', justifyContent: 'center', padding: 24 }}>
+          <View style={{ backgroundColor: '#fff', borderRadius: 12, padding: 16 }}>
+            <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8 }}>Search by type</Text>
+            <TextInput
+              placeholder="e.g. all, tshirt, jeans…"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoFocus
+              style={{ height: 42, borderWidth: 1, borderColor: '#ccc', borderRadius: 8, paddingHorizontal: 12, marginBottom: 12 }}
+            />
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+              <TouchableOpacity onPress={() => { setSearchQuery(''); setSearchModalOpen(false); }}>
+                <Text style={{ paddingVertical: 8, paddingHorizontal: 12, marginRight: 8 }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setSearchModalOpen(false)}>
+                <Text style={{ paddingVertical: 8, paddingHorizontal: 12, color: '#1976D2', fontWeight: '600' }}>Done</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>

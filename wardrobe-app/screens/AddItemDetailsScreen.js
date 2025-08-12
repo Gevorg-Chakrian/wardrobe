@@ -77,6 +77,8 @@ export default function AddItemScreen({ navigation, route }) {
 
   const [saving, setSaving] = useState(false);
   const [selected, setSelected] = useState(itemId ? initialSelected : emptySel);
+  const [heroUrl, setHeroUrl] = useState(imageUrl);
+  const [extracting, setExtracting] = useState(false);
 
   const toggle = (cat, value, max = Infinity) => {
     setSelected((prev) => {
@@ -99,6 +101,27 @@ export default function AddItemScreen({ navigation, route }) {
            && (selected.color || []).length <= 2;
   }, [selected]);
 
+  const retryExtraction = async () => {
+    try {
+      setExtracting(true);
+      const token = await SecureStore.getItemAsync('token');
+      const res = await api.post(
+        '/extract',
+        { imageUrl: heroUrl, itemType: initialType },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const newUrl = res.data?.imageUrl;
+      if (!newUrl) throw new Error('No imageUrl returned from extractor');
+      setHeroUrl(newUrl);
+      Alert.alert('Extraction updated', 'Preview replaced with the new extraction.');
+    } catch (e) {
+      console.log('retryExtraction error:', e?.response?.data || e.message);
+      Alert.alert('Extraction failed', e?.response?.data?.message || e.message || 'Please try again.');
+    } finally {
+      setExtracting(false);
+    }
+  };
+
   const onSave = async () => {
     if (!isValid) {
       Alert.alert('Missing info', 'Please pick at least one tag in each section (features are optional).');
@@ -111,13 +134,13 @@ export default function AddItemScreen({ navigation, route }) {
       if (itemId) {
         await api.put(
           `/wardrobe/${itemId}`,
-          { item_type: initialType, tags: selected },
+          { item_type: initialType, tags: selected, image_url: heroUrl },
           { headers: { Authorization: `Bearer ${token}` } }
         );
       } else {
         await api.post(
           '/wardrobe',
-          { image_url: imageUrl, item_type: initialType, tags: selected },
+          { image_url: heroUrl, item_type: initialType, tags: selected },
           { headers: { Authorization: `Bearer ${token}` } }
         );
       }
@@ -136,8 +159,27 @@ export default function AddItemScreen({ navigation, route }) {
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 28 }} showsVerticalScrollIndicator={false}>
         {/* hero image */}
-        <View style={{ marginTop: 16, marginBottom: 16, borderRadius: 12, overflow: 'hidden', backgroundColor: '#f8f8f8', height: HERO_HEIGHT }}>
-          <Image source={{ uri: imageUrl }} style={{ width: '100%', height: '100%', resizeMode: 'contain' }} />
+        <View style={{ marginTop: 16, marginBottom: 8, borderRadius: 12, overflow: 'hidden', backgroundColor: '#f8f8f8', height: HERO_HEIGHT }}>
+          <Image source={{ uri: heroUrl }} style={{ width: '100%', height: '100%', resizeMode: 'contain' }} />
+        </View>
+
+        {/* retry extraction */}
+        <View style={{ alignItems: 'center', marginBottom: 16 }}>
+          <TouchableOpacity
+            disabled={extracting}
+            onPress={retryExtraction}
+            activeOpacity={0.85}
+            style={{
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              borderRadius: 8,
+              backgroundColor: extracting ? '#9bbbe5' : '#1976D2'
+            }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '600' }}>
+              {extracting ? 'Extracting…' : 'Try extraction again'}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* color swatches */}
