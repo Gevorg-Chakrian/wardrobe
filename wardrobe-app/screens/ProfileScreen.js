@@ -160,9 +160,13 @@ export default function ProfileScreen({ navigation }) {
             return (
               <View style={{ paddingHorizontal: SIDE, marginBottom: 16 }}>
                 <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 8 }}>Latest look</Text>
-                <View style={{ width: '100%', borderRadius: 12, overflow: 'hidden', backgroundColor: '#eee' }}>
-                  <Image source={{ uri }} style={{ width: '100%', aspectRatio: ratio }} resizeMode="cover" />
-                </View>
+                 <TouchableOpacity
+                   onPress={() => navigation.navigate('LookDetails', { lookId: latest.id })}
+                   activeOpacity={0.85}
+                   style={{ width: '100%', borderRadius: 12, overflow: 'hidden', backgroundColor: '#eee' }}
+                 >
+                   <Image source={{ uri: latest.image_url }} style={{ width: '100%', aspectRatio: ratio }} resizeMode="cover" />
+                 </TouchableOpacity>
               </View>
             );
           }
@@ -172,16 +176,26 @@ export default function ProfileScreen({ navigation }) {
             <View style={{ paddingHorizontal: SIDE, flexDirection: 'row', gap: GAP, paddingBottom: insets.bottom + 80 }}>
               <View style={{ width: COL_W }}>
                 {colA.map(lk => (
-                  <View key={lk.id} style={{ marginBottom: GAP, borderRadius: 12, overflow: 'hidden', backgroundColor: '#eee' }}>
-                    <Image source={{ uri: lk.image_url || lk.imageUrl || lk.url }} style={{ width: '100%', aspectRatio: ratios[lk.id] || 1 }} resizeMode="cover" />
-                  </View>
+                  <TouchableOpacity
+                    key={lk.id}
+                    onPress={() => navigation.navigate('LookDetails', { lookId: lk.id })}
+                    activeOpacity={0.85}
+                    style={{ marginBottom: GAP, borderRadius: 12, overflow: 'hidden', backgroundColor: '#eee' }}
+                  >
+                    <Image source={{ uri: lk.image_url }} style={{ width: '100%', aspectRatio: ratios[lk.id] || 1 }} resizeMode="cover" />
+                  </TouchableOpacity>
                 ))}
               </View>
               <View style={{ width: COL_W }}>
                 {colB.map(lk => (
-                  <View key={lk.id} style={{ marginBottom: GAP, borderRadius: 12, overflow: 'hidden', backgroundColor: '#eee' }}>
-                    <Image source={{ uri: lk.image_url || lk.imageUrl || lk.url }} style={{ width: '100%', aspectRatio: ratios[lk.id] || 1 }} resizeMode="cover" />
-                  </View>
+                  <TouchableOpacity
+                    key={lk.id}
+                    onPress={() => navigation.navigate('LookDetails', { lookId: lk.id })}
+                    activeOpacity={0.85}
+                    style={{ marginBottom: GAP, borderRadius: 12, overflow: 'hidden', backgroundColor: '#eee' }}
+                  >
+                    <Image source={{ uri: lk.image_url }} style={{ width: '100%', aspectRatio: ratios[lk.id] || 1 }} resizeMode="cover" />
+                  </TouchableOpacity>
                 ))}
               </View>
             </View>

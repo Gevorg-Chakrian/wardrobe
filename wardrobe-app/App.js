@@ -9,6 +9,7 @@ import CreateLookScreen from './screens/CreateLookScreen';
 import AddItemDetailsScreen from './screens/AddItemDetailsScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import AddLookDetailsScreen from './screens/AddLookDetailsScreen';
+import LookDetailsScreen from './screens/LookDetailsScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -26,6 +27,7 @@ export default function App() {
           })}
         />
         <Stack.Screen name="CreateLook" component={CreateLookScreen} />
+        <Stack.Screen name="LookDetails" component={LookDetailsScreen} />
         <Stack.Screen name="AddLookDetails" component={AddLookDetailsScreen} />
         <Stack.Screen name="AddItemDetails" component={AddItemDetailsScreen} />
         <Stack.Screen
