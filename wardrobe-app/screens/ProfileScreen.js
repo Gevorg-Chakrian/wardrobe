@@ -133,7 +133,7 @@ export default function ProfileScreen({ navigation }) {
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: SIDE, marginBottom: 12 }}>
         <Text style={{ fontSize: 22, fontWeight: '800', flex: 1 }} numberOfLines={1}>{username}</Text>
-        <TouchableOpacity onPress={() => Alert.alert('Settings', 'Coming soon')} activeOpacity={0.8}>
+        <TouchableOpacity onPress={() => navigation.navigate('Settings')} activeOpacity={0.8}>
           <Ionicons name="settings-outline" size={24} color="#333" />
         </TouchableOpacity>
       </View>

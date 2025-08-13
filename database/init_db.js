@@ -36,6 +36,16 @@ const initTables = async () => {
       );
     `);
 
+    // user_prefs (per-user settings)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_prefs (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        language TEXT NOT NULL DEFAULT 'en',
+        tutorial_enabled BOOLEAN NOT NULL DEFAULT true,
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
     console.log('✅ Tables are ready');
   } catch (err) {
     console.error('❌ Failed to create tables:', err);
