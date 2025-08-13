@@ -64,6 +64,7 @@ export default function AddItemScreen({ navigation, route }) {
   const initialType = (route.params?.initialType || 'tshirt').toLowerCase();
   const itemId      = route.params?.itemId || null;
   const existing    = route.params?.existingTags || {};
+  const isEditing   = !!itemId;
 
   const initialSelected = {
     color:     toArray(existing.color),
@@ -76,7 +77,7 @@ export default function AddItemScreen({ navigation, route }) {
   };
 
   const [saving, setSaving] = useState(false);
-  const [selected, setSelected] = useState(itemId ? initialSelected : emptySel);
+  const [selected, setSelected] = useState(isEditing ? initialSelected : emptySel);
   const [heroUrl, setHeroUrl] = useState(imageUrl);
   const [extracting, setExtracting] = useState(false);
 
@@ -131,7 +132,7 @@ export default function AddItemScreen({ navigation, route }) {
       setSaving(true);
       const token = await SecureStore.getItemAsync('token');
 
-      if (itemId) {
+      if (isEditing) {
         await api.put(
           `/wardrobe/${itemId}`,
           { item_type: initialType, tags: selected, image_url: heroUrl },
@@ -145,7 +146,7 @@ export default function AddItemScreen({ navigation, route }) {
         );
       }
 
-      Alert.alert('Saved!', itemId ? 'Changes updated.' : 'Item added to your wardrobe.');
+      Alert.alert('Saved!', isEditing ? 'Changes updated.' : 'Item added to your wardrobe.');
       navigation.goBack();
     } catch (e) {
       console.log('save item error:', e?.response?.data || e.message);
@@ -163,24 +164,26 @@ export default function AddItemScreen({ navigation, route }) {
           <Image source={{ uri: heroUrl }} style={{ width: '100%', height: '100%', resizeMode: 'contain' }} />
         </View>
 
-        {/* retry extraction */}
-        <View style={{ alignItems: 'center', marginBottom: 16 }}>
-          <TouchableOpacity
-            disabled={extracting}
-            onPress={retryExtraction}
-            activeOpacity={0.85}
-            style={{
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-              borderRadius: 8,
-              backgroundColor: extracting ? '#9bbbe5' : '#1976D2'
-            }}
-          >
-            <Text style={{ color: '#fff', fontWeight: '600' }}>
-              {extracting ? 'Extracting…' : 'Try extraction again'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+        {/* retry extraction — show ONLY when adding (not editing) */}
+        {!isEditing && (
+          <View style={{ alignItems: 'center', marginBottom: 16 }}>
+            <TouchableOpacity
+              disabled={extracting}
+              onPress={retryExtraction}
+              activeOpacity={0.85}
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                borderRadius: 8,
+                backgroundColor: extracting ? '#9bbbe5' : '#1976D2'
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '600' }}>
+                {extracting ? 'Extracting…' : 'Try extraction again'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* color swatches */}
         <Section title={TITLES.color}>
@@ -221,12 +224,12 @@ export default function AddItemScreen({ navigation, route }) {
 
         <View style={{ height: 16 }} />
         <Button
-          title={saving ? 'Saving…' : (itemId ? 'Save changes' : 'Save item')}
+          title={saving ? 'Saving…' : (isEditing ? 'Save changes' : 'Save item')}
           onPress={onSave}
           disabled={saving}
         />
 
-        {itemId && (
+        {isEditing && (
           <>
             <View style={{ height: 16 }} />
             <Button
@@ -234,27 +237,27 @@ export default function AddItemScreen({ navigation, route }) {
               color="red"
               onPress={() => {
                 Alert.alert(
-                  "Delete Item",
-                  "Are you sure you want to delete this item?",
+                  'Delete Item',
+                  'Are you sure you want to delete this item?',
                   [
-                    { text: "Cancel", style: "cancel" },
+                    { text: 'Cancel', style: 'cancel' },
                     {
-                      text: "Delete",
-                      style: "destructive",
+                      text: 'Delete',
+                      style: 'destructive',
                       onPress: async () => {
                         try {
                           const token = await SecureStore.getItemAsync('token');
                           await api.delete(`/wardrobe/${itemId}`, {
                             headers: { Authorization: `Bearer ${token}` },
                           });
-                          Alert.alert("Deleted", "Item removed from your wardrobe.");
+                          Alert.alert('Deleted', 'Item removed from your wardrobe.');
                           navigation.goBack();
                         } catch (e) {
                           console.log('delete item error:', e?.response?.data || e.message);
                           Alert.alert('Failed to delete', e?.response?.data?.message || e.message || 'Please try again.');
                         }
-                      }
-                    }
+                      },
+                    },
                   ]
                 );
               }}
