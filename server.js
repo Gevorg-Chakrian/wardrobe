@@ -15,6 +15,7 @@ app.use('/uploads', require('express').static(require('path').join(__dirname, 'u
 app.use('/api/extract', require('./routes/extractRoutes'));
 app.use('/api/wardrobe', require('./routes/wardrobeRoutes'));
 app.use('/api/outfit', require('./routes/outfitRoutes'));
+app.use('/api', require('./routes/looksRoutes'));
 
 app.get('/', (_req, res) => res.send('Virtual Wardrobe Backend is running ✅'));
 

@@ -8,6 +8,7 @@ import WardrobeScreen from './screens/WardrobeScreen';
 import CreateLookScreen from './screens/CreateLookScreen';
 import AddItemDetailsScreen from './screens/AddItemDetailsScreen';
 import ProfileScreen from './screens/ProfileScreen';
+import AddLookDetailsScreen from './screens/AddLookDetailsScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -25,6 +26,7 @@ export default function App() {
           })}
         />
         <Stack.Screen name="CreateLook" component={CreateLookScreen} />
+        <Stack.Screen name="AddLookDetails" component={AddLookDetailsScreen} />
         <Stack.Screen name="AddItemDetails" component={AddItemDetailsScreen} />
         <Stack.Screen
           name="Profile"

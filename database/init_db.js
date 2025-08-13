@@ -14,7 +14,7 @@ const initTables = async () => {
       );
     `);
 
-    // wardrobe (base columns)
+    // wardrobe
     await pool.query(`
       CREATE TABLE IF NOT EXISTS wardrobe (
         id SERIAL PRIMARY KEY,
@@ -22,6 +22,17 @@ const initTables = async () => {
         image_url TEXT NOT NULL,
         item_type TEXT NOT NULL,
         tags JSONB DEFAULT '{}'::jsonb
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS looks (
+        id SERIAL PRIMARY KEY,
+        user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        image_url   TEXT NOT NULL,
+        items_used  INTEGER[] DEFAULT '{}',
+        tags        JSONB       DEFAULT '{}'::jsonb,
+        created_at  TIMESTAMP   DEFAULT NOW()
       );
     `);
 

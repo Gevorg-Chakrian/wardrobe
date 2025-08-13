@@ -80,7 +80,7 @@ export default function BottomNav({ navigation, active = 'wardrobe' }) {
         >
           <Ionicons name="add" size={24} color="#333" />
         </View>
-        <Text style={{ marginTop: 4, fontSize: 12, color: '#999' }}>Plus</Text>
+        <Text style={{ marginTop: 4, fontSize: 12, color: '#999' }}>Pro</Text>
       </View>
 
       {/* Profile */}
