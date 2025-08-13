@@ -1,21 +1,22 @@
 // screens/LookDetailsScreen.js
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { SafeAreaView, View, Text, Image, ScrollView, TouchableOpacity, Button, Alert, Dimensions } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import { API_BASE_URL } from '../api/config';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useLanguage } from '../i18n/LanguageProvider';
 
 const api = axios.create({ baseURL: API_BASE_URL });
 
-const TAGS = {
+const TAG_KEYS = {
   season:   ['spring','summer','autumn','winter','all-season'],
   occasion: ['casual','work','formal','sport','streetwear','beach','loungewear'],
 };
 
-const TITLES = {
-  season:   'Season',
-  occasion: 'Occasion',
+const TITLES_KEYS = {
+  season:   'lookDetails.season',
+  occasion: 'lookDetails.occasion',
 };
 
 const SCREEN_W = Dimensions.get('window').width;
@@ -47,10 +48,12 @@ const Section = ({ title, children }) => (
 
 export default function LookDetailsScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
+  const { t } = useLanguage();
   const lookId = route.params?.lookId;
 
   const [loading, setLoading] = useState(false);
-  const [look, setLook] = useState(null);           // { id, image_url, season[], occasion[], components: [ {id, image_url, item_type} ] }
+  // look: { id, image_url, season[], occasion[], components:[{id,image_url,item_type}] }
+  const [look, setLook] = useState(null);
   const [selected, setSelected] = useState({ season: [], occasion: [] });
 
   const getToken = async () => SecureStore.getItemAsync('token');
@@ -65,21 +68,21 @@ export default function LookDetailsScreen({ route, navigation }) {
       if (!data) throw new Error('Look not found');
 
       setLook(data);
-      // normalize to arrays
-      const season    = Array.isArray(data.season) ? data.season : (data.tags?.season || []);
-      const occasion  = Array.isArray(data.occasion) ? data.occasion : (data.tags?.occasion || []);
+      // normalize to arrays from either top-level or tags.*
+      const season   = Array.isArray(data.season) ? data.season : (data.tags?.season || []);
+      const occasion = Array.isArray(data.occasion) ? data.occasion : (data.tags?.occasion || []);
       setSelected({
         season: Array.isArray(season) ? season : (season ? [season] : []),
         occasion: Array.isArray(occasion) ? occasion : (occasion ? [occasion] : []),
       });
     } catch (e) {
       console.log('fetchLook error', e?.response?.data || e.message);
-      Alert.alert('Error', 'Failed to load look');
+      Alert.alert(t('common.error'), t('lookDetails.loadError'));
       navigation.goBack();
     } finally {
       setLoading(false);
     }
-  }, [lookId, navigation]);
+  }, [lookId, navigation, t]);
 
   useEffect(() => { fetchLook(); }, [fetchLook]);
 
@@ -101,11 +104,11 @@ export default function LookDetailsScreen({ route, navigation }) {
         { season: selected.season, occasion: selected.occasion },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      Alert.alert('Saved', 'Look tags updated.');
+      Alert.alert(t('lookDetails.savedTitle'), t('lookDetails.savedMsg'));
       navigation.goBack();
     } catch (e) {
       console.log('update look error', e?.response?.data || e.message);
-      Alert.alert('Failed', e?.response?.data?.message || e.message || 'Please try again');
+      Alert.alert(t('common.error'), t('lookDetails.saveFailed'));
     }
   };
 
@@ -118,6 +121,7 @@ export default function LookDetailsScreen({ route, navigation }) {
   }
 
   const comps = Array.isArray(look.components) ? look.components : (look.items || []);
+  const heroUri = look.image_url || look.imageUrl || look.url;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff', paddingTop: insets.top + 10 }}>
@@ -130,11 +134,11 @@ export default function LookDetailsScreen({ route, navigation }) {
           overflow: 'hidden',
           marginBottom: 14,
         }}>
-          <Image source={{ uri: look.image_url || look.imageUrl || look.url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+          <Image source={{ uri: heroUri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
         </View>
 
         {/* Components (readonly) */}
-        <Section title="Components">
+        <Section title={t('lookDetails.components')}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
             {comps && comps.length > 0 ? comps.map((it) => {
               const uri = it.image_url || it.imageUrl || it.url;
@@ -147,21 +151,21 @@ export default function LookDetailsScreen({ route, navigation }) {
                 </View>
               );
             }) : (
-              <Text style={{ color: '#666' }}>No components attached.</Text>
+              <Text style={{ color: '#666' }}>{t('lookDetails.noComponents')}</Text>
             )}
           </View>
         </Section>
 
         {/* Editable tags */}
         {(['season','occasion']).map((cat) => (
-          <Section key={cat} title={TITLES[cat]}>
+          <Section key={cat} title={t(TITLES_KEYS[cat])}>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-              {TAGS[cat].map((v) => (
+              {TAG_KEYS[cat].map((key) => (
                 <Chip
-                  key={v}
-                  label={v}
-                  active={(selected[cat] || []).includes(v)}
-                  onPress={() => toggle(cat, v)}
+                  key={key}
+                  label={t(`tags.${cat}.${key}`)}      // localized label
+                  active={(selected[cat] || []).includes(key)}
+                  onPress={() => toggle(cat, key)}
                 />
               ))}
             </View>
@@ -169,7 +173,7 @@ export default function LookDetailsScreen({ route, navigation }) {
         ))}
 
         <View style={{ height: 18 }} />
-        <Button title="Save" onPress={onSave} />
+        <Button title={t('lookDetails.save')} onPress={onSave} />
       </ScrollView>
     </SafeAreaView>
   );

@@ -3,6 +3,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useLanguage } from '../i18n/LanguageProvider';
 
 export const BOTTOM_NAV_HEIGHT = 62;
 
@@ -10,6 +11,7 @@ const TABS = ['wardrobe', 'profile']; // logical order (left → right)
 
 export default function BottomNav({ navigation, active = 'wardrobe' }) {
   const insets = useSafeAreaInsets();
+  const { t } = useLanguage();
 
   const go = (dest) => {
     if (dest === active) return;
@@ -56,7 +58,7 @@ export default function BottomNav({ navigation, active = 'wardrobe' }) {
             fontWeight: active === 'wardrobe' ? '600' : '400',
           }}
         >
-          Wardrobe
+          {t('nav.wardrobe')}
         </Text>
       </TouchableOpacity>
 
@@ -64,7 +66,7 @@ export default function BottomNav({ navigation, active = 'wardrobe' }) {
       <View style={{ alignItems: 'center' }}>
         <View
           style={{
-            width: 40,            // smaller so it doesn’t exceed the bar
+            width: 40,
             height: 40,
             borderRadius: 20,
             backgroundColor: '#FFD54F',
@@ -80,7 +82,9 @@ export default function BottomNav({ navigation, active = 'wardrobe' }) {
         >
           <Ionicons name="add" size={24} color="#333" />
         </View>
-        <Text style={{ marginTop: 4, fontSize: 12, color: '#999' }}>Pro</Text>
+        <Text style={{ marginTop: 4, fontSize: 12, color: '#999' }}>
+          {t('nav.pro')} {/* keep as "Pro" if you haven’t added this key */}
+        </Text>
       </View>
 
       {/* Profile */}
@@ -98,7 +102,7 @@ export default function BottomNav({ navigation, active = 'wardrobe' }) {
             fontWeight: active === 'profile' ? '600' : '400',
           }}
         >
-          Profile
+          {t('nav.profile')}
         </Text>
       </TouchableOpacity>
     </View>

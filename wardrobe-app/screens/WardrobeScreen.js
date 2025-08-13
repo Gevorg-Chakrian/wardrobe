@@ -11,6 +11,7 @@ import * as SecureStore from 'expo-secure-store';
 import BottomNav, { BOTTOM_NAV_HEIGHT } from '../components/BottomNav';
 import axios from 'axios';
 import { API_BASE_URL } from '../api/config';
+import { useLanguage } from '../i18n/LanguageProvider';
 
 const api = axios.create({ baseURL: API_BASE_URL });
 
@@ -29,8 +30,20 @@ const ROW_GAP = 12;
 
 const TILE_W = Math.floor((SCREEN_W - PAGE_SIDE_PADDING * 2 - ROW_GAP) / COLS);
 
+
+
 export default function WardrobeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const { t } = useLanguage();
+
+  const typeLabel = (key) => {
+    const k = String(key).toLowerCase();
+    const val = t(`types.${k}`);
+    return val && val !== `types.${k}`
+      ? val
+      : k.charAt(0).toUpperCase() + k.slice(1);
+  };
+
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -60,19 +73,19 @@ export default function WardrobeScreen({ navigation }) {
       setItems(all.filter(it => (it.item_type || it.itemType) !== 'profile'));
     } catch (e) {
       console.log('fetchWardrobe error:', e?.response?.data || e.message);
-      Alert.alert('Error', 'Failed to load wardrobe');
+      Alert.alert(t('common.error'), t('wardrobe.loadError'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useFocusEffect(useCallback(() => { fetchWardrobe(); }, [fetchWardrobe]));
 
   const grouped = useMemo(() => {
     const map = {};
     for (const it of items) {
-      const t = (it.item_type || it.itemType || 'unknown').toLowerCase();
-      (map[t] ||= []).push(it);
+      const tpe = (it.item_type || it.itemType || 'unknown').toLowerCase();
+      (map[tpe] ||= []).push(it);
     }
     return map;
   }, [items]);
@@ -87,15 +100,15 @@ export default function WardrobeScreen({ navigation }) {
   };
 
   const goToType = (type) => {
-    const idx = pages.findIndex((t) => t.toLowerCase() === type.toLowerCase());
+    const idx = pages.findIndex((tpe) => tpe.toLowerCase() === type.toLowerCase());
     if (idx >= 0) scrollToIndex(idx);
   };
 
   useEffect(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return;
-    const exact = pages.find((t) => t.toLowerCase() === q);
-    const partial = pages.find((t) => t.toLowerCase().includes(q));
+    const exact = pages.find((tpe) => tpe.toLowerCase() === q);
+    const partial = pages.find((tpe) => tpe.toLowerCase().includes(q));
     goToType(exact || partial || 'all');
   }, [searchQuery, pages]);
 
@@ -109,7 +122,7 @@ export default function WardrobeScreen({ navigation }) {
     setIsPicking(true);
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) { Alert.alert('Permission required', 'We need access to your gallery.'); return; }
+      if (!perm.granted) { Alert.alert(t('common.permissionRequired'), t('common.needGalleryAccess')); return; }
 
       const mediaType = ImagePicker.MediaType?.Images ?? ImagePicker.MediaTypeOptions.Images;
       const picked = await ImagePicker.launchImageLibraryAsync({
@@ -142,7 +155,7 @@ export default function WardrobeScreen({ navigation }) {
       navigation.navigate('AddItemDetails', { imageUrl, initialType: finalType });
     } catch (e) {
       console.log('upload failed:', e.response ? e.response.data : e.message);
-      Alert.alert('Upload failed', e?.response?.data?.message || e.message || 'Please try again.');
+      Alert.alert(t('common.uploadFailed'), e?.response?.data?.message || e.message || t('common.tryAgain'));
     } finally {
       setIsPicking(false);
       setIsUploading(false);
@@ -206,13 +219,14 @@ export default function WardrobeScreen({ navigation }) {
             style={{ backgroundColor: '#1976D2', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8 }}
             activeOpacity={0.9}
           >
-            <Text style={{ color: '#fff', fontWeight: '600' }}>Add Item</Text>
+            <Text style={{ color: '#fff', fontWeight: '600' }}>{t('wardrobe.addItem')}</Text>
           </TouchableOpacity>
           <View style={{ flex: 1 }} />
           <TouchableOpacity
             onPress={() => setSearchModalOpen(true)}
             style={{ width: 42, height: 42, borderRadius: 8, borderWidth: 1, borderColor: '#ccc', alignItems: 'center', justifyContent: 'center' }}
             activeOpacity={0.8}
+            accessibilityLabel={t('common.search')}
           >
             <Text style={{ fontSize: 20 }}>🔍</Text>
           </TouchableOpacity>
@@ -220,12 +234,12 @@ export default function WardrobeScreen({ navigation }) {
 
         {/* Tabs */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 6 }}>
-          {(['all', ...typeList]).map((t, i) => {
+          {(['all', ...typeList]).map((tpe, i) => {
             const active = i === activeIndex;
             return (
-              <TouchableOpacity key={t} onPress={() => scrollToIndex(i)} style={{ marginRight: 18, alignItems: 'center' }}>
-                <Text style={{ fontSize: 16, fontWeight: active ? '700' : '600', textTransform: 'capitalize', color: active ? '#000' : '#666' }}>
-                  {t}
+              <TouchableOpacity key={tpe} onPress={() => scrollToIndex(i)} style={{ marginRight: 18, alignItems: 'center' }}>
+                <Text style={{ fontSize: 16, fontWeight: active ? '700' : '600', color: active ? '#000' : '#666' }}>
+                  {tpe === 'all' ? t('wardrobe.all') : typeLabel(tpe)}
                 </Text>
                 <View style={{ height: 3, marginTop: 6, width: active ? 22 : 0, backgroundColor: '#1976D2', borderRadius: 3 }} />
               </TouchableOpacity>
@@ -242,7 +256,7 @@ export default function WardrobeScreen({ navigation }) {
           <FlatList
             ref={pagesRef}
             data={['all', ...typeList]}
-            keyExtractor={(t) => t}
+            keyExtractor={(tpe) => tpe}
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}
@@ -252,7 +266,7 @@ export default function WardrobeScreen({ navigation }) {
               setActiveIndex(index);
             }}
             renderItem={({ item: pageKey }) => {
-              const title = pageKey === 'all' ? 'All' : pageKey.charAt(0).toUpperCase() + pageKey.slice(1);
+              const title = pageKey === 'all' ? t('wardrobe.all') : typeLabel(pageKey);
               const data = pageKey === 'all' ? items : (grouped[pageKey] || []);
               return (
                 <View style={{ width: PAGE_W, paddingHorizontal: PAGE_SIDE_PADDING }}>
@@ -275,12 +289,12 @@ export default function WardrobeScreen({ navigation }) {
                         }
                         onLongPress={() => {
                           Alert.alert(
-                            'Delete Item',
-                            'Are you sure you want to delete this item?',
+                            t('wardrobe.deleteTitle'),
+                            t('wardrobe.deleteConfirm'),
                             [
-                              { text: 'Cancel', style: 'cancel' },
+                              { text: t('common.cancel'), style: 'cancel' },
                               {
-                                text: 'Delete',
+                                text: t('common.delete'),
                                 style: 'destructive',
                                 onPress: async () => {
                                   try {
@@ -290,7 +304,7 @@ export default function WardrobeScreen({ navigation }) {
                                     });
                                     fetchWardrobe();
                                   } catch (e) {
-                                    Alert.alert('Failed to delete', e?.response?.data?.message || e.message || 'Please try again.');
+                                    Alert.alert(t('wardrobe.deleteFailed'), e?.response?.data?.message || e.message || t('common.tryAgain'));
                                   }
                                 },
                               },
@@ -315,25 +329,25 @@ export default function WardrobeScreen({ navigation }) {
       <Modal visible={typeModalOpen} animationType="slide" transparent onDismiss={handleModalDismiss}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }}>
           <View style={{ backgroundColor: '#fff', padding: 16, paddingBottom: 24, borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '75%' }}>
-            <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8 }}>Pick a type</Text>
+            <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8 }}>{t('wardrobe.pickType')}</Text>
             <TextInput
-              placeholder="Search types to upload…"
+              placeholder={t('wardrobe.searchTypesPlaceholder')}
               value={typeSearch}
               onChangeText={setTypeSearch}
               style={{ height: 36, borderWidth: 1, borderColor: '#ccc', borderRadius: 8, paddingHorizontal: 10, marginBottom: 10 }}
             />
             <FlatList
-              data={MASTER_TYPES.filter(t => t.includes(typeSearch.trim().toLowerCase()))}
-              keyExtractor={(t) => t}
+              data={MASTER_TYPES.filter(tp => tp.includes(typeSearch.trim().toLowerCase()))}
+              keyExtractor={(tp) => tp}
               renderItem={({ item }) => (
                 <TouchableOpacity onPress={() => { setPendingType(item); setTypeModalOpen(false); }} style={{ paddingVertical: 10 }}>
-                  <Text style={{ fontSize: 16 }}>{item}</Text>
+                  <Text style={{ fontSize: 16 }}>{typeLabel(item)}</Text>
                 </TouchableOpacity>
               )}
               ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: '#eee' }} />}
             />
             <View style={{ height: 8 }} />
-            <Button title="Close" onPress={() => setTypeModalOpen(false)} />
+            <Button title={t('common.close')} onPress={() => setTypeModalOpen(false)} />
           </View>
         </View>
       </Modal>
@@ -342,9 +356,9 @@ export default function WardrobeScreen({ navigation }) {
       <Modal visible={searchModalOpen} transparent animationType="fade" onRequestClose={() => setSearchModalOpen(false)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.25)', justifyContent: 'center', padding: 24 }}>
           <View style={{ backgroundColor: '#fff', borderRadius: 12, padding: 16 }}>
-            <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8 }}>Search by type</Text>
+            <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8 }}>{t('wardrobe.searchByType')}</Text>
             <TextInput
-              placeholder="e.g. all, tshirt, jeans…"
+              placeholder={t('wardrobe.searchExample')}
               value={searchQuery}
               onChangeText={setSearchQuery}
               autoFocus
@@ -352,10 +366,10 @@ export default function WardrobeScreen({ navigation }) {
             />
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
               <TouchableOpacity onPress={() => { setSearchQuery(''); setSearchModalOpen(false); }}>
-                <Text style={{ paddingVertical: 8, paddingHorizontal: 12, marginRight: 8 }}>Cancel</Text>
+                <Text style={{ paddingVertical: 8, paddingHorizontal: 12, marginRight: 8 }}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => setSearchModalOpen(false)}>
-                <Text style={{ paddingVertical: 8, paddingHorizontal: 12, color: '#1976D2', fontWeight: '600' }}>Done</Text>
+                <Text style={{ paddingVertical: 8, paddingHorizontal: 12, color: '#1976D2', fontWeight: '600' }}>{t('common.done')}</Text>
               </TouchableOpacity>
             </View>
           </View>

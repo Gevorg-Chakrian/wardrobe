@@ -6,7 +6,8 @@ import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import { API_BASE_URL } from '../api/config';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import BottomNav, { BOTTOM_NAV_HEIGHT } from '../components/BottomNav';
+import BottomNav from '../components/BottomNav';
+import { useLanguage } from '../i18n/LanguageProvider';
 
 const api = axios.create({ baseURL: API_BASE_URL });
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -15,11 +16,8 @@ const GAP = 12;
 const COL_W = Math.floor((SCREEN_W - SIDE * 2 - GAP) / 2);
 
 /** ---- helpers: name + jwt decoding (no Node Buffer needed) ---- */
-function capitalize(s) {
-  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
-}
+function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 function base64UrlToBase64(s) {
-  // normalize URL-safe -> standard base64 and pad
   const n = s.replace(/-/g, '+').replace(/_/g, '/');
   const pad = n.length % 4 ? 4 - (n.length % 4) : 0;
   return n + '='.repeat(pad);
@@ -32,45 +30,34 @@ function base64DecodePolyfill(input) {
     buffer = chars.indexOf(buffer);
     if (~buffer) {
       bs = bc % 4 ? bs * 64 + buffer : buffer;
-      if (bc++ % 4) {
-        output += String.fromCharCode(255 & (bs >> ((-2 * bc) & 6)));
-      }
+      if (bc++ % 4) output += String.fromCharCode(255 & (bs >> ((-2 * bc) & 6)));
     }
   }
-  return output; // ASCII-safe; JWT JSON is ASCII
+  return output;
 }
 function safeAtob(b64) {
   if (typeof globalThis.atob === 'function') return globalThis.atob(b64);
   return base64DecodePolyfill(b64);
 }
 async function resolveDisplayName() {
-  // 1) whatever was saved at login/registration
   const stored = await SecureStore.getItemAsync('username');
   if (stored) return stored;
 
-  // 2) decode email from JWT (payload is ASCII JSON)
   const token = await SecureStore.getItemAsync('token');
   if (token) {
     try {
       const parts = token.split('.');
       if (parts.length >= 2) {
-        const payloadB64 = base64UrlToBase64(parts[1]);
-        const jsonStr = safeAtob(payloadB64);
+        const jsonStr = safeAtob(base64UrlToBase64(parts[1]));
         const payload = JSON.parse(jsonStr);
         const email = payload?.email;
         if (email) {
           const beforeAt = String(email).split('@')[0];
-          const pretty = beforeAt
-            .split(/[._-]+/)
-            .filter(Boolean)
-            .map(capitalize)
-            .join(' ');
+          const pretty = beforeAt.split(/[._-]+/).filter(Boolean).map(capitalize).join(' ');
           return pretty || 'Profile';
         }
       }
-    } catch {
-      // fall through
-    }
+    } catch {}
   }
   return 'Profile';
 }
@@ -78,17 +65,13 @@ async function resolveDisplayName() {
 
 export default function ProfileScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const { t } = useLanguage();
+
   const [username, setUsername] = useState('Profile');
   const [looks, setLooks] = useState([]);
   const [ratios, setRatios] = useState({}); // id -> aspectRatio (w/h)
 
-  // restore display name using the old working logic
-  useEffect(() => {
-    (async () => {
-      const name = await resolveDisplayName();
-      setUsername(name);
-    })();
-  }, []);
+  useEffect(() => { (async () => setUsername(await resolveDisplayName()))(); }, []);
 
   const getToken = async () => SecureStore.getItemAsync('token');
 
@@ -99,7 +82,6 @@ export default function ProfileScreen({ navigation }) {
       const arr = res.data?.looks || res.data?.items || [];
       setLooks(arr);
 
-      // probe image sizes for aspectRatio
       arr.forEach((lk) => {
         const uri = lk.image_url || lk.imageUrl || lk.url;
         if (!uri || ratios[lk.id]) return;
@@ -109,10 +91,10 @@ export default function ProfileScreen({ navigation }) {
           ()   => setRatios(prev => ({ ...prev, [lk.id]: 1 }))
         );
       });
-    } catch (e) {
-      Alert.alert('Error', 'Failed to load looks');
+    } catch {
+      Alert.alert(t('common.error'), t('profile.loadLooksError'));
     }
-  }, [ratios]);
+  }, [t, ratios]);
 
   useEffect(() => { fetchLooks(); }, [fetchLooks]);
 
@@ -145,7 +127,7 @@ export default function ProfileScreen({ navigation }) {
           style={{ height: 44, borderRadius: 10, backgroundColor: '#1976D2', alignItems: 'center', justifyContent: 'center' }}
           activeOpacity={0.9}
         >
-          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>CREATE LOOK</Text>
+          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>{t('profile.createLook')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -159,14 +141,14 @@ export default function ProfileScreen({ navigation }) {
             const uri = latest.image_url || latest.imageUrl || latest.url;
             return (
               <View style={{ paddingHorizontal: SIDE, marginBottom: 16 }}>
-                <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 8 }}>Latest look</Text>
-                 <TouchableOpacity
-                   onPress={() => navigation.navigate('LookDetails', { lookId: latest.id })}
-                   activeOpacity={0.85}
-                   style={{ width: '100%', borderRadius: 12, overflow: 'hidden', backgroundColor: '#eee' }}
-                 >
-                   <Image source={{ uri: latest.image_url }} style={{ width: '100%', aspectRatio: ratio }} resizeMode="cover" />
-                 </TouchableOpacity>
+                <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 8 }}>{t('profile.latestLook')}</Text>
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('LookDetails', { lookId: latest.id })}
+                  activeOpacity={0.85}
+                  style={{ width: '100%', borderRadius: 12, overflow: 'hidden', backgroundColor: '#eee' }}
+                >
+                  <Image source={{ uri }} style={{ width: '100%', aspectRatio: ratio }} resizeMode="cover" />
+                </TouchableOpacity>
               </View>
             );
           }
@@ -175,28 +157,34 @@ export default function ProfileScreen({ navigation }) {
           return (
             <View style={{ paddingHorizontal: SIDE, flexDirection: 'row', gap: GAP, paddingBottom: insets.bottom + 80 }}>
               <View style={{ width: COL_W }}>
-                {colA.map(lk => (
-                  <TouchableOpacity
-                    key={lk.id}
-                    onPress={() => navigation.navigate('LookDetails', { lookId: lk.id })}
-                    activeOpacity={0.85}
-                    style={{ marginBottom: GAP, borderRadius: 12, overflow: 'hidden', backgroundColor: '#eee' }}
-                  >
-                    <Image source={{ uri: lk.image_url }} style={{ width: '100%', aspectRatio: ratios[lk.id] || 1 }} resizeMode="cover" />
-                  </TouchableOpacity>
-                ))}
+                {colA.map(lk => {
+                  const uri = lk.image_url || lk.imageUrl || lk.url;
+                  return (
+                    <TouchableOpacity
+                      key={lk.id}
+                      onPress={() => navigation.navigate('LookDetails', { lookId: lk.id })}
+                      activeOpacity={0.85}
+                      style={{ marginBottom: GAP, borderRadius: 12, overflow: 'hidden', backgroundColor: '#eee' }}
+                    >
+                      <Image source={{ uri }} style={{ width: '100%', aspectRatio: ratios[lk.id] || 1 }} resizeMode="cover" />
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
               <View style={{ width: COL_W }}>
-                {colB.map(lk => (
-                  <TouchableOpacity
-                    key={lk.id}
-                    onPress={() => navigation.navigate('LookDetails', { lookId: lk.id })}
-                    activeOpacity={0.85}
-                    style={{ marginBottom: GAP, borderRadius: 12, overflow: 'hidden', backgroundColor: '#eee' }}
-                  >
-                    <Image source={{ uri: lk.image_url }} style={{ width: '100%', aspectRatio: ratios[lk.id] || 1 }} resizeMode="cover" />
-                  </TouchableOpacity>
-                ))}
+                {colB.map(lk => {
+                  const uri = lk.image_url || lk.imageUrl || lk.url;
+                  return (
+                    <TouchableOpacity
+                      key={lk.id}
+                      onPress={() => navigation.navigate('LookDetails', { lookId: lk.id })}
+                      activeOpacity={0.85}
+                      style={{ marginBottom: GAP, borderRadius: 12, overflow: 'hidden', backgroundColor: '#eee' }}
+                    >
+                      <Image source={{ uri }} style={{ width: '100%', aspectRatio: ratios[lk.id] || 1 }} resizeMode="cover" />
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
           );

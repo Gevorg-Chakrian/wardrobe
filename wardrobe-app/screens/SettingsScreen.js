@@ -14,25 +14,22 @@ import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../api/config';
+import { useLanguage } from '../i18n/LanguageProvider';
 
 const api = axios.create({ baseURL: API_BASE_URL });
 const LANGS = ['en', 'ru', 'de', 'fr', 'es'];
-
-const CHIP_HEIGHT = 36;
 
 const Chip = ({ label, active, onPress }) => (
   <TouchableOpacity
     onPress={onPress}
     activeOpacity={0.85}
     style={{
-      height: CHIP_HEIGHT,
       paddingHorizontal: 14,
+      paddingVertical: Platform.OS === 'ios' ? 8 : 6,
       borderRadius: 18,
       marginRight: 8,
       marginBottom: 8,
       backgroundColor: active ? '#1976D2' : '#e9e9ea',
-      alignItems: 'center',
-      justifyContent: 'center',
     }}
   >
     <Text style={{ color: active ? '#fff' : '#333', fontSize: 15 }}>{label}</Text>
@@ -41,60 +38,46 @@ const Chip = ({ label, active, onPress }) => (
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
+  const { lang, t, setLanguage } = useLanguage();
 
-  const [language, setLanguage] = useState('en');
+  const [loading, setLoading] = useState(false);
   const [tutorialOn, setTutorialOn] = useState(true);
 
-  // change password
+  // password
   const [newPass, setNewPass] = useState('');
   const [confirm, setConfirm] = useState('');
   const [savingPass, setSavingPass] = useState(false);
 
   const getToken = async () => SecureStore.getItemAsync('token');
 
-  const loadSettings = async () => {
-    try {
-      const token = await getToken();
-      const res = await api.get('/settings', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const s = res.data?.settings || res.data || {};
-      if (s.language) setLanguage(s.language);
-      if (typeof s.tutorial_enabled === 'boolean') setTutorialOn(s.tutorial_enabled);
-    } catch (e) {
-      console.log('loadSettings error', e?.response?.data || e.message);
-    }
-  };
+  useEffect(() => {
+    (async () => {
+      try {
+        setLoading(true);
+        const token = await getToken();
+        const res = await api.get('/settings', { headers: { Authorization: `Bearer ${token}` } });
+        const s = res.data?.settings || res.data || {};
+        if (typeof s.tutorial_enabled === 'boolean') setTutorialOn(s.tutorial_enabled);
+        // language is controlled by provider (no need to set here)
+      } catch {
+        // non-fatal
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
-  useEffect(() => { loadSettings(); }, []);
-
-  const persistLanguage = async (lang) => {
-    try {
-      const token = await getToken();
-      await api.put(
-        '/settings/language',
-        { language: lang },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-    } catch (e) {
-      console.log('saveLanguage error', e?.response?.data || e.message);
-      Alert.alert('Failed', e?.response?.data?.message || e.message || 'Please try again.');
-      // revert UI if server failed
-      await loadSettings();
-    }
-  };
-
-  const onPickLanguage = (lang) => {
-    const label = String(lang).toUpperCase();
+  const onChooseLang = (next) => {
+    if (next === lang) return;
     Alert.alert(
-      'Change language',
-      `Do you want to change the language to ${label}?`,
+      t('settings.language', 'Language'),
+      t('settings.changeLangConfirm', `Change app language to ${next.toUpperCase()}?`, next),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel', 'Cancel'), style: 'cancel' },
         {
-          text: 'Change',
-          style: 'destructive',
-          onPress: () => { setLanguage(lang); persistLanguage(lang); },
+          text: t('common.yes', 'Yes'),
+          style: 'default',
+          onPress: () => setLanguage(next, { persistRemote: true }),
         },
       ]
     );
@@ -104,22 +87,30 @@ export default function SettingsScreen() {
     setTutorialOn(next); // optimistic
     try {
       const token = await getToken();
-      await api.put(
-        '/settings/tutorial',
-        { enabled: next },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-    } catch (e) {
+      await api.put('/settings/tutorial', { enabled: next }, { headers: { Authorization: `Bearer ${token}` } });
+    } catch {
       setTutorialOn(!next); // revert
-      console.log('toggleTutorial error', e?.response?.data || e.message);
-      Alert.alert('Failed', e?.response?.data?.message || e.message || 'Please try again.');
+      Alert.alert(t('common.error', 'Error'), t('common.tryAgain', 'Please try again.'));
     }
   };
 
   const changePassword = async () => {
-    if (!newPass || !confirm) return Alert.alert('Missing', 'Enter new password and confirm it.');
-    if (newPass.length < 6) return Alert.alert('Weak password', 'Use at least 6 characters.');
-    if (newPass !== confirm) return Alert.alert('Mismatch', 'Passwords do not match.');
+    if (!newPass || !confirm) {
+      return Alert.alert(t('common.error', 'Error'), t('settings.passwordMissing', 'Enter new password and confirm it.'));
+    }
+    if (newPass.length < 6) {
+      return Alert.alert(
+        t('settings.weakPassword', 'Weak password'),
+        t('settings.weakPasswordBody', 'Use at least 6 characters.')
+      );
+    }
+    if (newPass !== confirm) {
+      return Alert.alert(
+        t('settings.passwordMismatch', 'Mismatch'),
+        t('settings.passwordMismatchBody', 'Passwords do not match.')
+      );
+    }
+
     try {
       setSavingPass(true);
       const token = await getToken();
@@ -130,10 +121,9 @@ export default function SettingsScreen() {
       );
       setNewPass('');
       setConfirm('');
-      Alert.alert('Updated', 'Password changed.');
-    } catch (e) {
-      console.log('changePassword error', e?.response?.data || e.message);
-      Alert.alert('Failed', e?.response?.data?.message || e.message || 'Please try again.');
+      Alert.alert(t('settings.updated', 'Updated'), t('settings.passwordChanged', 'Password changed.'));
+    } catch {
+      Alert.alert(t('common.error', 'Error'), t('common.tryAgain', 'Please try again.'));
     } finally {
       setSavingPass(false);
     }
@@ -142,35 +132,40 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff', paddingTop: insets.top + 10 }}>
       <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
-        <Text style={{ fontSize: 22, fontWeight: '800', marginBottom: 12 }}>Settings</Text>
+        <Text style={{ fontSize: 22, fontWeight: '800', marginBottom: 12 }}>
+          {t('settings.title', 'Settings')}
+        </Text>
 
         {/* Language */}
-        <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>Language</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' }}>
+        <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>
+          {t('settings.language', 'Language')}
+        </Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
           {LANGS.map(l => (
-            <Chip
-              key={l}
-              label={l.toUpperCase()}
-              active={language === l}
-              onPress={() => onPickLanguage(l)}
-            />
+            <Chip key={l} label={l.toUpperCase()} active={lang === l} onPress={() => onChooseLang(l)} />
           ))}
         </View>
 
         {/* Tutorial */}
         <View style={{ height: 16 }} />
-        <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>Tutorial</Text>
+        <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>
+          {t('settings.tutorial', 'Tutorial')}
+        </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text style={{ marginRight: 10 }}>{tutorialOn ? 'On' : 'Off'}</Text>
+          <Text style={{ marginRight: 10 }}>
+            {tutorialOn ? t('common.on', 'On') : t('common.off', 'Off')}
+          </Text>
           <Switch value={tutorialOn} onValueChange={toggleTutorial} />
         </View>
 
         {/* Change Password */}
         <View style={{ height: 20 }} />
-        <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>Change password</Text>
+        <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>
+          {t('settings.passwordTitle', 'Change password')}
+        </Text>
         <View style={{ marginBottom: 8 }}>
           <TextInput
-            placeholder="New password"
+            placeholder={t('settings.newPassword', 'New password')}
             secureTextEntry
             value={newPass}
             onChangeText={setNewPass}
@@ -179,7 +174,7 @@ export default function SettingsScreen() {
         </View>
         <View style={{ marginBottom: 12 }}>
           <TextInput
-            placeholder="Confirm password"
+            placeholder={t('settings.confirmPassword', 'Confirm password')}
             secureTextEntry
             value={confirm}
             onChangeText={setConfirm}
@@ -199,7 +194,7 @@ export default function SettingsScreen() {
           }}
         >
           <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>
-            {savingPass ? 'Saving…' : 'Update password'}
+            {t('settings.updatePassword', 'Update password')}
           </Text>
         </TouchableOpacity>
       </View>

@@ -7,9 +7,11 @@ import {
 import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import { API_BASE_URL } from '../api/config';
+import { useLanguage } from '../i18n/LanguageProvider';
 
 const api = axios.create({ baseURL: API_BASE_URL });
 
+// store keys (don’t translate these)
 const TAGS = {
   color: ['black','white','gray','beige','brown','navy','blue','green','yellow','orange','red','pink','purple','gold','silver'],
   season: ['spring','summer','autumn','winter','all-season'],
@@ -18,16 +20,6 @@ const TAGS = {
   material: ['cotton','wool','linen','denim','leather','synthetic','silk','knit'],
   pattern: ['solid','striped','checked','floral','geometric','polka-dot','animal','camouflage'],
   feature: ['hooded','padded','embellished','sheer','sleeveless','backless'],
-};
-
-const TITLES = {
-  color: 'Color (pick up to 2)',
-  season: 'Season',
-  fit: 'Fit & Style',
-  occasion: 'Occasion',
-  material: 'Material',
-  pattern: 'Pattern',
-  feature: 'Special Features',
 };
 
 const SCREEN_W = Dimensions.get('window').width;
@@ -51,6 +43,7 @@ const Chip = ({ active, label, onPress }) => (
       marginBottom: 10,
       backgroundColor: active ? '#1976D2' : '#e9e9ea',
     }}
+    activeOpacity={0.85}
   >
     <Text style={{ color: active ? '#fff' : '#333', fontSize: 16 }}>{label}</Text>
   </TouchableOpacity>
@@ -60,6 +53,8 @@ const emptySel = { color: [], season: [], fit: [], occasion: [], material: [], p
 const toArray = (v) => Array.isArray(v) ? v : (v ? [v] : []);
 
 export default function AddItemScreen({ navigation, route }) {
+  const { t } = useLanguage();
+
   const imageUrl    = route.params?.imageUrl;
   const initialType = (route.params?.initialType || 'tshirt').toLowerCase();
   const itemId      = route.params?.itemId || null;
@@ -114,10 +109,10 @@ export default function AddItemScreen({ navigation, route }) {
       const newUrl = res.data?.imageUrl;
       if (!newUrl) throw new Error('No imageUrl returned from extractor');
       setHeroUrl(newUrl);
-      Alert.alert('Extraction updated', 'Preview replaced with the new extraction.');
+      Alert.alert(t('addItem.extractUpdatedTitle', 'Extraction updated'), t('addItem.extractUpdatedBody', 'Preview replaced with the new extraction.'));
     } catch (e) {
       console.log('retryExtraction error:', e?.response?.data || e.message);
-      Alert.alert('Extraction failed', e?.response?.data?.message || e.message || 'Please try again.');
+      Alert.alert(t('addItem.extractFailedTitle', 'Extraction failed'), e?.response?.data?.message || e.message || t('common.tryAgain', 'Please try again.'));
     } finally {
       setExtracting(false);
     }
@@ -125,7 +120,10 @@ export default function AddItemScreen({ navigation, route }) {
 
   const onSave = async () => {
     if (!isValid) {
-      Alert.alert('Missing info', 'Please pick at least one tag in each section (features are optional).');
+      Alert.alert(
+        t('addItem.missingTitle', 'Missing info'),
+        t('addItem.missingBody', 'Please pick at least one tag in each section (features are optional).')
+      );
       return;
     }
     try {
@@ -146,14 +144,28 @@ export default function AddItemScreen({ navigation, route }) {
         );
       }
 
-      Alert.alert('Saved!', isEditing ? 'Changes updated.' : 'Item added to your wardrobe.');
+      Alert.alert(
+        t('addItem.savedTitle', 'Saved!'),
+        isEditing ? t('addItem.savedEdit', 'Changes updated.') : t('addItem.savedAdd', 'Item added to your wardrobe.')
+      );
       navigation.goBack();
     } catch (e) {
       console.log('save item error:', e?.response?.data || e.message);
-      Alert.alert('Failed to save', e?.response?.data?.message || e.message || 'Please try again.');
+      Alert.alert(t('common.saveFailed', 'Failed to save'), e?.response?.data?.message || e.message || t('common.tryAgain', 'Please try again.'));
     } finally {
       setSaving(false);
     }
+  };
+
+  // localized titles
+  const TITLES = {
+    color:    t('tags.color.title', 'Color (pick up to 2)'),
+    season:   t('tags.season.title', 'Season'),
+    fit:      t('tags.fit.title', 'Fit & Style'),
+    occasion: t('tags.occasion.title', 'Occasion'),
+    material: t('tags.material.title', 'Material'),
+    pattern:  t('tags.pattern.title', 'Pattern'),
+    feature:  t('tags.feature.title', 'Special Features'),
   };
 
   return (
@@ -164,7 +176,7 @@ export default function AddItemScreen({ navigation, route }) {
           <Image source={{ uri: heroUrl }} style={{ width: '100%', height: '100%', resizeMode: 'contain' }} />
         </View>
 
-        {/* retry extraction — show ONLY when adding (not editing) */}
+        {/* retry extraction — ONLY when adding (not editing) */}
         {!isEditing && (
           <View style={{ alignItems: 'center', marginBottom: 16 }}>
             <TouchableOpacity
@@ -179,7 +191,7 @@ export default function AddItemScreen({ navigation, route }) {
               }}
             >
               <Text style={{ color: '#fff', fontWeight: '600' }}>
-                {extracting ? 'Extracting…' : 'Try extraction again'}
+                {extracting ? t('common.extracting', 'Extracting…') : t('addItem.tryExtract', 'Try extraction again')}
               </Text>
             </TouchableOpacity>
           </View>
@@ -202,6 +214,7 @@ export default function AddItemScreen({ navigation, route }) {
                   borderWidth: selected.color.includes(c) ? 3 : 1,
                   borderColor: selected.color.includes(c) ? '#1976D2' : '#ccc',
                 }}
+                accessibilityLabel={t(`tags.color.${c}`, c)}
               />
             ))}
           </View>
@@ -213,7 +226,7 @@ export default function AddItemScreen({ navigation, route }) {
               {TAGS[cat].map((v) => (
                 <Chip
                   key={v}
-                  label={v}
+                  label={t(`tags.${cat}.${v}`, v)}
                   active={(selected[cat] || []).includes(v)}
                   onPress={() => toggle(cat, v)}
                 />
@@ -224,7 +237,7 @@ export default function AddItemScreen({ navigation, route }) {
 
         <View style={{ height: 16 }} />
         <Button
-          title={saving ? 'Saving…' : (isEditing ? 'Save changes' : 'Save item')}
+          title={saving ? t('common.saving', 'Saving…') : (isEditing ? t('addItem.saveChanges', 'Save changes') : t('addItem.saveItem', 'Save item'))}
           onPress={onSave}
           disabled={saving}
         />
@@ -233,16 +246,16 @@ export default function AddItemScreen({ navigation, route }) {
           <>
             <View style={{ height: 16 }} />
             <Button
-              title="Delete item"
+              title={t('addItem.delete', 'Delete item')}
               color="red"
               onPress={() => {
                 Alert.alert(
-                  'Delete Item',
-                  'Are you sure you want to delete this item?',
+                  t('addItem.deleteTitle', 'Delete Item'),
+                  t('addItem.deleteConfirm', 'Are you sure you want to delete this item?'),
                   [
-                    { text: 'Cancel', style: 'cancel' },
+                    { text: t('common.cancel', 'Cancel'), style: 'cancel' },
                     {
-                      text: 'Delete',
+                      text: t('common.delete', 'Delete'),
                       style: 'destructive',
                       onPress: async () => {
                         try {
@@ -250,11 +263,11 @@ export default function AddItemScreen({ navigation, route }) {
                           await api.delete(`/wardrobe/${itemId}`, {
                             headers: { Authorization: `Bearer ${token}` },
                           });
-                          Alert.alert('Deleted', 'Item removed from your wardrobe.');
+                          Alert.alert(t('addItem.deleted', 'Deleted'), t('addItem.deletedBody', 'Item removed from your wardrobe.'));
                           navigation.goBack();
                         } catch (e) {
                           console.log('delete item error:', e?.response?.data || e.message);
-                          Alert.alert('Failed to delete', e?.response?.data?.message || e.message || 'Please try again.');
+                          Alert.alert(t('addItem.deleteFailed', 'Failed to delete'), e?.response?.data?.message || e.message || t('common.tryAgain', 'Please try again.'));
                         }
                       },
                     },

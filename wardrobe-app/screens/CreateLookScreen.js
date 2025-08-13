@@ -1,17 +1,30 @@
 // screens/CreateLookScreen.js
 import React, { useCallback, useState } from 'react';
-import { SafeAreaView, View, Text, ScrollView, Image, TouchableOpacity, Button, Alert, Platform } from 'react-native';
+import {
+  SafeAreaView,
+  View,
+  Text,
+  ScrollView,
+  Image,
+  TouchableOpacity,
+  Button,
+  Alert,
+  Platform
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import { API_BASE_URL } from '../api/config';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useLanguage } from '../i18n/LanguageProvider';
 
 const api = axios.create({ baseURL: API_BASE_URL });
 
 export default function CreateLookScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const { t } = useLanguage();
+
   const [basePhotos, setBasePhotos] = useState([]);
   const [clothesByType, setClothesByType] = useState({});
   const [selectedBase, setSelectedBase] = useState(null);
@@ -31,32 +44,35 @@ export default function CreateLookScreen({ navigation }) {
       const clothes = all.filter(it => (it.item_type || it.itemType) !== 'profile');
       const grouped = {};
       for (const item of clothes) {
-        const t = (item.item_type || item.itemType || 'unknown').toLowerCase();
-        (grouped[t] ||= []).push(item);
+        const tpe = (item.item_type || item.itemType || 'unknown').toLowerCase();
+        (grouped[tpe] ||= []).push(item);
       }
       setClothesByType(grouped);
     } catch (e) {
-      Alert.alert('Error', 'Failed to load wardrobe');
+      Alert.alert(t('common.error'), t('createLook.loadWardrobeError'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useFocusEffect(useCallback(() => { fetchWardrobe(); }, [fetchWardrobe]));
 
   const addProfilePhoto = async () => {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) return Alert.alert('Permission required', 'We need access to your gallery.');
+      if (!perm.granted) return Alert.alert(t('createLook.permissionTitle'), t('createLook.permissionBody'));
+
       const picked = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaType?.Images ?? ImagePicker.MediaTypeOptions.Images,
         quality: 0.9,
       });
       if (picked.canceled) return;
+
       const asset = picked.assets[0];
       const uri  = Platform.OS === 'android' ? asset.uri : asset.uri.replace('file://', '');
       const name = asset.fileName || `photo_${Date.now()}.jpg`;
       const type = asset.mimeType || 'image/jpeg';
+
       const form = new FormData();
       form.append('image', { uri, name, type });
       form.append('item_type', 'profile');
@@ -75,7 +91,7 @@ export default function CreateLookScreen({ navigation }) {
       await fetchWardrobe();
       setSelectedBase({ id: `temp-${Date.now()}`, url: imageUrl });
     } catch (e) {
-      Alert.alert('Upload failed', e?.response?.data?.message || e.message || 'Please try again.');
+      Alert.alert(t('common.uploadFailed'), e?.response?.data?.message || e.message || t('common.tryAgain'));
     }
   };
 
@@ -86,7 +102,7 @@ export default function CreateLookScreen({ navigation }) {
       setSelectedBase(curr => (curr?.id === photoId ? null : curr));
       await fetchWardrobe();
     } catch (e) {
-      Alert.alert('Failed to delete', e?.response?.data?.message || e.message || 'Please try again.');
+      Alert.alert(t('common.deleteFailed'), e?.response?.data?.message || e.message || t('common.tryAgain'));
     }
   };
 
@@ -102,18 +118,38 @@ export default function CreateLookScreen({ navigation }) {
     const pickedId = pickedByType[type];
     const pickedItem = pickedId ? items.find(it => it.id === pickedId) : null;
 
+    // localize type name if available, fallback to raw
+    const typeLabel = t(`types.${type}`, { _default: type });
+
     return (
       <View style={{ marginBottom: 12 }}>
         <TouchableOpacity
           onPress={() => setExpandedType(expanded ? null : type)}
-          style={{ padding: 10, backgroundColor: expanded ? '#1976D2' : '#eee', borderRadius: 8, flexDirection: 'row', alignItems: 'center' }}
+          style={{
+            padding: 10,
+            backgroundColor: expanded ? '#1976D2' : '#eee',
+            borderRadius: 8,
+            flexDirection: 'row',
+            alignItems: 'center'
+          }}
           activeOpacity={0.85}
         >
-          <Text style={{ color: expanded ? '#fff' : '#000', fontWeight: '600', fontSize: 16, textTransform: 'capitalize', flex: 1 }}>
-            {type} ({items.length})
+          <Text
+            style={{
+              color: expanded ? '#fff' : '#000',
+              fontWeight: '600',
+              fontSize: 16,
+              textTransform: 'capitalize',
+              flex: 1
+            }}
+          >
+            {typeLabel} ({items.length})
           </Text>
           {pickedItem && !expanded && (
-            <Image source={{ uri: pickedItem.image_url || pickedItem.imageUrl || pickedItem.url }} style={{ width: 40, height: 40, borderRadius: 6 }} />
+            <Image
+              source={{ uri: pickedItem.image_url || pickedItem.imageUrl || pickedItem.url }}
+              style={{ width: 40, height: 40, borderRadius: 6 }}
+            />
           )}
         </TouchableOpacity>
         {expanded && (
@@ -125,7 +161,15 @@ export default function CreateLookScreen({ navigation }) {
                 <TouchableOpacity
                   key={item.id}
                   onPress={() => handlePick(type, item.id)}
-                  style={{ width: 100, height: 100, borderRadius: 10, overflow: 'hidden', borderWidth: picked ? 3 : 0, borderColor: '#1976D2', backgroundColor: '#eee' }}
+                  style={{
+                    width: 100,
+                    height: 100,
+                    borderRadius: 10,
+                    overflow: 'hidden',
+                    borderWidth: picked ? 3 : 0,
+                    borderColor: '#1976D2',
+                    backgroundColor: '#eee'
+                  }}
                   activeOpacity={0.85}
                 >
                   <Image source={{ uri }} style={{ width: '100%', height: '100%' }} />
@@ -141,24 +185,32 @@ export default function CreateLookScreen({ navigation }) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff', paddingTop: insets.top + 20 }}>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+        {/* Base photo header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-          <Text style={{ fontSize: 20, fontWeight: '800', flex: 1 }}>Choose your base photo</Text>
-          <Button title="Add my photo" onPress={addProfilePhoto} />
+          <Text style={{ fontSize: 20, fontWeight: '800', flex: 1 }}>{t('createLook.chooseBase')}</Text>
+          <Button title={t('createLook.addMyPhoto')} onPress={addProfilePhoto} />
         </View>
 
+        {/* Base photo scroller */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
           {basePhotos.length === 0 ? (
-            <Text style={{ color: '#666' }}>No photos yet. Tap “Add my photo”.</Text>
+            <Text style={{ color: '#666' }}>{t('createLook.noPhotos')}</Text>
           ) : (
             basePhotos.map((p) => {
               const uri = p.image_url || p.imageUrl || p.url;
               const isSelected = selectedBase?.id === p.id;
+
               const confirmDelete = () => {
-                Alert.alert('Delete base photo','Are you sure you want to delete this photo?',[
-                  { text:'Cancel', style:'cancel' },
-                  { text:'Delete', style:'destructive', onPress:() => deleteBasePhoto(p.id) }
-                ]);
+                Alert.alert(
+                  t('createLook.deleteBaseTitle'),
+                  t('createLook.deleteBaseBody'),
+                  [
+                    { text: t('common.cancel'), style: 'cancel' },
+                    { text: t('common.delete'), style: 'destructive', onPress: () => deleteBasePhoto(p.id) },
+                  ]
+                );
               };
+
               return (
                 <TouchableOpacity
                   key={p.id}
@@ -171,7 +223,9 @@ export default function CreateLookScreen({ navigation }) {
                   <Image
                     source={{ uri }}
                     style={{
-                      width: 110, height: 110, borderRadius: 10,
+                      width: 110,
+                      height: 110,
+                      borderRadius: 10,
                       borderWidth: isSelected ? 3 : 1,
                       borderColor: isSelected ? '#1976D2' : '#ddd'
                     }}
@@ -182,21 +236,21 @@ export default function CreateLookScreen({ navigation }) {
           )}
         </ScrollView>
 
-        <Text style={{ fontSize: 20, fontWeight: '800', marginBottom: 10 }}>Pick clothes</Text>
+        <Text style={{ fontSize: 20, fontWeight: '800', marginBottom: 10 }}>{t('createLook.pickClothes')}</Text>
 
+        {/* Accordion sections */}
         {Object.keys(clothesByType).sort().map(type => (
           <Section key={type} type={type} items={clothesByType[type]} />
         ))}
 
         <View style={{ marginTop: 20 }}>
           <Button
-            title="Continue"
+            title={t('common.continue')}
             onPress={() => {
-              if (!selectedBase) return Alert.alert('Pick a base photo first.');
+              if (!selectedBase) return Alert.alert(t('createLook.pickBaseFirst'));
               const pickedIds = Object.values(pickedByType).filter(Boolean);
-              if (pickedIds.length === 0) return Alert.alert('Pick at least one clothing item.');
+              if (pickedIds.length === 0) return Alert.alert(t('createLook.pickAtLeastOne'));
 
-              // Go tag & save the look
               navigation.navigate('AddLookDetails', {
                 baseUrl: selectedBase.url,
                 itemIds: pickedIds,
