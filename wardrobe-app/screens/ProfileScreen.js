@@ -12,7 +12,69 @@ const api = axios.create({ baseURL: API_BASE_URL });
 const { width: SCREEN_W } = Dimensions.get('window');
 const SIDE = 16;
 const GAP = 12;
-const COL_W = Math.floor((SCREEN_W - SIDE*2 - GAP) / 2);
+const COL_W = Math.floor((SCREEN_W - SIDE * 2 - GAP) / 2);
+
+/** ---- helpers: name + jwt decoding (no Node Buffer needed) ---- */
+function capitalize(s) {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+function base64UrlToBase64(s) {
+  // normalize URL-safe -> standard base64 and pad
+  const n = s.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = n.length % 4 ? 4 - (n.length % 4) : 0;
+  return n + '='.repeat(pad);
+}
+function base64DecodePolyfill(input) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+  let str = String(input).replace(/[^A-Za-z0-9+/=]/g, '');
+  let output = '';
+  for (let bc = 0, bs, buffer, idx = 0; (buffer = str.charAt(idx++)); ) {
+    buffer = chars.indexOf(buffer);
+    if (~buffer) {
+      bs = bc % 4 ? bs * 64 + buffer : buffer;
+      if (bc++ % 4) {
+        output += String.fromCharCode(255 & (bs >> ((-2 * bc) & 6)));
+      }
+    }
+  }
+  return output; // ASCII-safe; JWT JSON is ASCII
+}
+function safeAtob(b64) {
+  if (typeof globalThis.atob === 'function') return globalThis.atob(b64);
+  return base64DecodePolyfill(b64);
+}
+async function resolveDisplayName() {
+  // 1) whatever was saved at login/registration
+  const stored = await SecureStore.getItemAsync('username');
+  if (stored) return stored;
+
+  // 2) decode email from JWT (payload is ASCII JSON)
+  const token = await SecureStore.getItemAsync('token');
+  if (token) {
+    try {
+      const parts = token.split('.');
+      if (parts.length >= 2) {
+        const payloadB64 = base64UrlToBase64(parts[1]);
+        const jsonStr = safeAtob(payloadB64);
+        const payload = JSON.parse(jsonStr);
+        const email = payload?.email;
+        if (email) {
+          const beforeAt = String(email).split('@')[0];
+          const pretty = beforeAt
+            .split(/[._-]+/)
+            .filter(Boolean)
+            .map(capitalize)
+            .join(' ');
+          return pretty || 'Profile';
+        }
+      }
+    } catch {
+      // fall through
+    }
+  }
+  return 'Profile';
+}
+/** ------------------------------------------------------------- */
 
 export default function ProfileScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -20,11 +82,11 @@ export default function ProfileScreen({ navigation }) {
   const [looks, setLooks] = useState([]);
   const [ratios, setRatios] = useState({}); // id -> aspectRatio (w/h)
 
+  // restore display name using the old working logic
   useEffect(() => {
     (async () => {
-      const local = await SecureStore.getItemAsync('username');
-      if (local) setUsername(local);
-      else setUsername('Profile');
+      const name = await resolveDisplayName();
+      setUsername(name);
     })();
   }, []);
 
@@ -34,17 +96,17 @@ export default function ProfileScreen({ navigation }) {
     try {
       const token = await getToken();
       const res = await api.get('/looks', { headers: { Authorization: `Bearer ${token}` } });
-      const arr = res.data?.looks || [];
+      const arr = res.data?.looks || res.data?.items || [];
       setLooks(arr);
 
       // probe image sizes for aspectRatio
       arr.forEach((lk) => {
-        const uri = lk.image_url;
+        const uri = lk.image_url || lk.imageUrl || lk.url;
         if (!uri || ratios[lk.id]) return;
         Image.getSize(
           uri,
           (w, h) => setRatios(prev => ({ ...prev, [lk.id]: w / h })),
-          () => setRatios(prev => ({ ...prev, [lk.id]: 1 }))
+          ()   => setRatios(prev => ({ ...prev, [lk.id]: 1 }))
         );
       });
     } catch (e) {
@@ -57,7 +119,7 @@ export default function ProfileScreen({ navigation }) {
   const latest = looks[0] || null;
   const rest = useMemo(() => (looks.length > 1 ? looks.slice(1) : []), [looks]);
 
-  // Split rest into two columns (simple waterfall)
+  // simple waterfall into two columns
   const colA = [], colB = [];
   let hA = 0, hB = 0;
   rest.forEach(lk => {
@@ -70,7 +132,7 @@ export default function ProfileScreen({ navigation }) {
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff', paddingTop: insets.top + 10 }}>
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: SIDE, marginBottom: 12 }}>
-        <Text style={{ fontSize: 22, fontWeight: '800', flex: 1 }}>{username}</Text>
+        <Text style={{ fontSize: 22, fontWeight: '800', flex: 1 }} numberOfLines={1}>{username}</Text>
         <TouchableOpacity onPress={() => Alert.alert('Settings', 'Coming soon')} activeOpacity={0.8}>
           <Ionicons name="settings-outline" size={24} color="#333" />
         </TouchableOpacity>
@@ -88,21 +150,18 @@ export default function ProfileScreen({ navigation }) {
       </View>
 
       <FlatList
-        data={[{ kind:'latest' }, { kind:'grid' }]}
+        data={[{ kind: 'latest' }, { kind: 'grid' }]}
         keyExtractor={(it, i) => it.kind + i}
         renderItem={({ item }) => {
           if (item.kind === 'latest') {
             if (!latest) return null;
             const ratio = ratios[latest.id] || 1;
+            const uri = latest.image_url || latest.imageUrl || latest.url;
             return (
               <View style={{ paddingHorizontal: SIDE, marginBottom: 16 }}>
                 <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 8 }}>Latest look</Text>
                 <View style={{ width: '100%', borderRadius: 12, overflow: 'hidden', backgroundColor: '#eee' }}>
-                  <Image
-                    source={{ uri: latest.image_url }}
-                    style={{ width: '100%', aspectRatio: ratio }}
-                    resizeMode="cover"
-                  />
+                  <Image source={{ uri }} style={{ width: '100%', aspectRatio: ratio }} resizeMode="cover" />
                 </View>
               </View>
             );
@@ -114,14 +173,14 @@ export default function ProfileScreen({ navigation }) {
               <View style={{ width: COL_W }}>
                 {colA.map(lk => (
                   <View key={lk.id} style={{ marginBottom: GAP, borderRadius: 12, overflow: 'hidden', backgroundColor: '#eee' }}>
-                    <Image source={{ uri: lk.image_url }} style={{ width: '100%', aspectRatio: ratios[lk.id] || 1 }} resizeMode="cover" />
+                    <Image source={{ uri: lk.image_url || lk.imageUrl || lk.url }} style={{ width: '100%', aspectRatio: ratios[lk.id] || 1 }} resizeMode="cover" />
                   </View>
                 ))}
               </View>
               <View style={{ width: COL_W }}>
                 {colB.map(lk => (
                   <View key={lk.id} style={{ marginBottom: GAP, borderRadius: 12, overflow: 'hidden', backgroundColor: '#eee' }}>
-                    <Image source={{ uri: lk.image_url }} style={{ width: '100%', aspectRatio: ratios[lk.id] || 1 }} resizeMode="cover" />
+                    <Image source={{ uri: lk.image_url || lk.imageUrl || lk.url }} style={{ width: '100%', aspectRatio: ratios[lk.id] || 1 }} resizeMode="cover" />
                   </View>
                 ))}
               </View>
@@ -129,7 +188,8 @@ export default function ProfileScreen({ navigation }) {
           );
         }}
       />
-      {/* Always-visible bottom navigation */}
+
+      {/* Bottom nav */}
       <BottomNav navigation={navigation} active="profile" />
     </SafeAreaView>
   );
