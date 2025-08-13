@@ -21,6 +21,10 @@ export default {
       search: 'Search',
       saving: 'Saving…',
       extracting: 'Extracting…',
+      yes: 'Yes',
+      no: 'No',
+      on: 'On',
+      off: 'Off',
     },
     wardrobe: {
       addItem: 'Add Item',
@@ -174,6 +178,7 @@ export default {
       passwordMismatchBody: 'Passwords do not match.',
       updated: 'Updated',
       passwordChanged: 'Password changed.',
+      passwordMissing: 'Enter new password and confirm it.',
     },
   },
 
@@ -200,6 +205,10 @@ export default {
       search: 'Поиск',
       saving: 'Сохранение…',
       extracting: 'Извлечение…',
+      yes: 'Да',
+      no: 'Нет',
+      on: 'Вкл.',
+      off: 'Выкл.',
     },
     wardrobe: {
       addItem: 'Добавить вещь',
@@ -353,6 +362,7 @@ export default {
       passwordMismatchBody: 'Введённые пароли не совпадают.',
       updated: 'Обновлено',
       passwordChanged: 'Пароль изменён.',
+      passwordMissing: 'Введите новый пароль и подтвердите его.',
     },
   },
 
@@ -378,6 +388,10 @@ export default {
       search: 'Suchen',
       saving: 'Speichern…',
       extracting: 'Extrahieren…',
+      yes: 'Ja',
+      no: 'Nein',
+      on: 'An',
+      off: 'Aus',
     },
     wardrobe: {
       addItem: 'Artikel hinzufügen',
@@ -531,6 +545,7 @@ export default {
       passwordMismatchBody: 'Passwörter stimmen nicht überein.',
       updated: 'Aktualisiert',
       passwordChanged: 'Passwort geändert.',
+      passwordMissing: 'Geben Sie ein neues Passwort ein und bestätigen Sie es.',
     },
   },
 
@@ -556,6 +571,10 @@ export default {
       search: 'Rechercher',
       saving: 'Enregistrement…',
       extracting: 'Extraction…',
+      yes: 'Oui',
+      no: 'Non',
+      on: 'Activé',
+      off: 'Désactivé',
     },
     wardrobe: {
       addItem: 'Ajouter un article',
@@ -709,6 +728,7 @@ export default {
       passwordMismatchBody: 'Les mots de passe ne correspondent pas.',
       updated: 'Mis à jour',
       passwordChanged: 'Mot de passe changé.',
+      passwordMissing: 'Entrez un nouveau mot de passe et confirmez‑le.',
     },
   },
 
@@ -734,6 +754,10 @@ export default {
       search: 'Buscar',
       saving: 'Guardando…',
       extracting: 'Extrayendo…',
+      yes: 'Sí',
+      no: 'No',
+      on: 'Activado',
+      off: 'Desactivado',
     },
     wardrobe: {
       addItem: 'Añadir prenda',
@@ -887,6 +911,7 @@ export default {
       passwordMismatchBody: 'Las contraseñas no coinciden.',
       updated: 'Actualizado',
       passwordChanged: 'Contraseña cambiada.',
+      passwordMissing: 'Introduce una nueva contraseña y confírmala.',
     },
   },
 };
