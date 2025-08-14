@@ -3,14 +3,19 @@ import React, {
   useMemo, useRef, useState
 } from 'react';
 import { View, Text, Modal, Pressable, Dimensions } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
+import axios from 'axios';
+import { API_BASE_URL } from '../api/config';
 
 const TutorialContext = createContext(null);
 export const useTutorial = () => useContext(TutorialContext);
 
+// Default only until we hydrate from server
 const DEFAULT_ENABLED = true;
 
 export function TutorialProvider({ children }) {
-  const [enabled, setEnabled] = useState(DEFAULT_ENABLED);
+  const [enabled, setEnabledState] = useState(DEFAULT_ENABLED);
+  const [hydrated, setHydrated] = useState(false); // <-- block seeding until true
 
   // engine state
   const [running, setRunning] = useState(false);
@@ -29,29 +34,59 @@ export function TutorialProvider({ children }) {
   const [overlayTarget, setOverlayTarget] = useState(null);
   const [overlayPrefer, setOverlayPrefer] = useState(null); // 'above' | 'below' | 'right' | 'left' | null
 
+  /** ---------- hydrate "enabled" from server once ---------- */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await SecureStore.getItemAsync('token');
+        if (!token) {
+          // No token — default to current local value and mark hydrated
+          if (!cancelled) setHydrated(true);
+          return;
+        }
+        const api = axios.create({ baseURL: API_BASE_URL });
+        const res = await api.get('/settings', { headers: { Authorization: `Bearer ${token}` } });
+        const s = res.data?.settings || res.data || {};
+        const serverEnabled = typeof s.tutorial_enabled === 'boolean' ? s.tutorial_enabled : DEFAULT_ENABLED;
+
+        if (!cancelled) {
+          setEnabledState(!!serverEnabled);
+          setHydrated(true);
+        }
+      } catch {
+        // If fetch fails, just mark hydrated to avoid blocking; keep current local value
+        if (!cancelled) setHydrated(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   /** ---------- default flow (seeded on first start) ---------- */
   const DEFAULT_FLOW = useRef([
-    // Step 1: Wardrobe → Add Item (bubble below, arrow pointing up to the button)
-    { id: 'wardrobe:add', screen: 'Wardrobe', anchorId: 'wardrobe:addItem', textKey: 'tutorial.choosePhoto', prefer: 'below' },
-
-    // Step 2: type modal (kept so it appears if modal is already open)
-    { id: 'wardrobe:type', screen: 'Wardrobe', anchorId: 'wardrobe:typePicker', textKey: 'tutorial.pickType', prefer: 'above' },
-
-    // Step 3: AddItemDetails → colors section (above)
-    { id: 'additem:colors', screen: 'AddItemDetails', anchorId: 'additem:colors', textKey: 'tutorial.chooseTags', prefer: 'above' },
-
-    // Step 4: Wardrobe → bottom Profile tab (above)
-    { id: 'wardrobe:profile', screen: 'Wardrobe', anchorId: 'nav:profile', textKey: 'tutorial.gotoProfile', prefer: 'above' },
-
-    // Step 5: Profile → Create Look (below)
-    { id: 'profile:create', screen: 'Profile', anchorId: 'profile:createLook', textKey: 'tutorial.createLook', prefer: 'below' },
-
-    // Step 6: CreateLook → Add my photo (below)
-    { id: 'create:addPhoto', screen: 'CreateLook', anchorId: 'create:addPhoto', textKey: 'tutorial.addMyPhoto', prefer: 'below' },
-    // The post-upload trio is injected with queueFront() elsewhere.
+    { id: 'wardrobe:add',    screen: 'Wardrobe',       anchorId: 'wardrobe:addItem',   textKey: 'tutorial.choosePhoto',  prefer: 'below' },
+    { id: 'wardrobe:type',   screen: 'Wardrobe',       anchorId: 'wardrobe:typePicker',textKey: 'tutorial.pickType',     prefer: 'above' },
+    { id: 'additem:colors',  screen: 'AddItemDetails', anchorId: 'additem:colors',     textKey: 'tutorial.chooseTags',   prefer: 'above' },
+    // { id: 'wardrobe:profile', screen: 'Wardrobe',    anchorId: 'nav:profile',        textKey: 'tutorial.gotoProfile',  prefer: 'above' },
+    { id: 'profile:create',  screen: 'Profile',        anchorId: 'profile:createLook', textKey: 'tutorial.createLook',   prefer: 'below' },
+    { id: 'create:addPhoto', screen: 'CreateLook',     anchorId: 'create:addPhoto',    textKey: 'tutorial.addMyPhoto',   prefer: 'below' },
   ]);
 
   /** ---------- core helpers ---------- */
+  const applyEnabled = useCallback((val) => {
+    const on = !!val;
+    setEnabledState(on);
+
+    if (!on) {
+      // Hard stop: clear everything and prevent immediate reseed
+      queueRef.current = [];
+      setCurrentStep(null);
+      setOverlayVisible(false);
+      setRunning(false);
+      startedRef.current = false;
+    }
+  }, []);
+
   const ensureRunning = useCallback(() => {
     if (!enabled) return false;
     if (!running) setRunning(true);
@@ -64,7 +99,10 @@ export function TutorialProvider({ children }) {
 
   /** Start once and seed the default flow on first call */
   const startIfEnabled = useCallback(() => {
+    // DO NOT seed until we've hydrated from server
+    if (!hydrated) return;
     if (!enabled) return;
+
     if (!startedRef.current) {
       startedRef.current = true;
 
@@ -78,7 +116,7 @@ export function TutorialProvider({ children }) {
       }
     }
     setRunning(true);
-  }, [enabled]);
+  }, [enabled, hydrated]);
 
   /** Show a specific step immediately */
   const setNext = useCallback(({ anchorId, textKey, screen, prefer }) => {
@@ -168,11 +206,12 @@ export function TutorialProvider({ children }) {
     next,
     complete,
     enabled,
-    setEnabled,
+    setEnabled: applyEnabled,     // expose smart setter
     registerAnchor,
     isEnabled: () => enabled,
     isRunning: () => running,
-  }), [onScreen, startIfEnabled, setNext, queueFront, next, complete, enabled, registerAnchor, running]);
+    isHydrated: () => hydrated,   // optional if you want screens to know
+  }), [onScreen, startIfEnabled, setNext, queueFront, next, complete, enabled, registerAnchor, running, applyEnabled, hydrated]);
 
   return (
     <TutorialContext.Provider value={value}>
@@ -206,31 +245,22 @@ function CoachOverlay({ visible, textKey, target, prefer, onNext, onClose }) {
   let bubbleTop, bubbleLeft, arrowStyle;
 
   if (prefer === 'right' || prefer === 'left') {
-    // Vertical alignment (clamped to screen)
     bubbleTop = Math.max(MARGIN, Math.min(target.y, H - guessH - MARGIN));
-
     if (prefer === 'right') {
       bubbleLeft = Math.min(target.x + target.width + MARGIN + ARROW, W - BUBBLE_MAX_W - MARGIN);
       arrowStyle = {
         position: 'absolute',
-        top: Math.max(
-          bubbleTop + 16,
-          Math.min(target.y + target.height / 2 - ARROW, bubbleTop + guessH - 16)
-        ),
+        top: Math.max(bubbleTop + 16, Math.min(target.y + target.height / 2 - ARROW, bubbleTop + guessH - 16)),
         left: Math.min(target.x + target.width + MARGIN, W - MARGIN - ARROW * 2),
         width: 0, height: 0,
         borderTopWidth: ARROW, borderBottomWidth: ARROW, borderLeftWidth: ARROW,
         borderTopColor: 'transparent', borderBottomColor: 'transparent', borderLeftColor: '#111',
       };
     } else {
-      // left
       bubbleLeft = Math.max(MARGIN, target.x - (MARGIN + ARROW + guessW));
       arrowStyle = {
         position: 'absolute',
-        top: Math.max(
-          bubbleTop + 16,
-          Math.min(target.y + target.height / 2 - ARROW, bubbleTop + guessH - 16)
-        ),
+        top: Math.max(bubbleTop + 16, Math.min(target.y + target.height / 2 - ARROW, bubbleTop + guessH - 16)),
         left: Math.max(target.x - MARGIN - ARROW, MARGIN),
         width: 0, height: 0,
         borderTopWidth: ARROW, borderBottomWidth: ARROW, borderRightWidth: ARROW,
@@ -238,30 +268,21 @@ function CoachOverlay({ visible, textKey, target, prefer, onNext, onClose }) {
       };
     }
   } else {
-    // Above / below (auto if null)
     const placeBelow =
-      prefer === 'below'
-        ? true
-        : prefer === 'above'
-          ? false
-          : (target.y + target.height + MARGIN + guessH + MARGIN < H);
+      prefer === 'below' ? true :
+      prefer === 'above' ? false :
+      (target.y + target.height + MARGIN + guessH + MARGIN < H);
 
     bubbleTop = placeBelow
       ? target.y + target.height + MARGIN + ARROW
       : Math.max(MARGIN, target.y - guessH - MARGIN - ARROW);
 
-    bubbleLeft = Math.min(
-      Math.max(MARGIN, target.x),
-      W - BUBBLE_MAX_W - MARGIN
-    );
+    bubbleLeft = Math.min(Math.max(MARGIN, target.x), W - BUBBLE_MAX_W - MARGIN);
 
     arrowStyle = placeBelow
       ? {
           position: 'absolute',
-          left: Math.min(
-            Math.max(bubbleLeft + 16, target.x + target.width / 2 - ARROW),
-            bubbleLeft + BUBBLE_MAX_W - 16
-          ),
+          left: Math.min(Math.max(bubbleLeft + 16, target.x + target.width / 2 - ARROW), bubbleLeft + BUBBLE_MAX_W - 16),
           top: target.y + target.height + MARGIN,
           width: 0, height: 0,
           borderLeftWidth: ARROW, borderRightWidth: ARROW, borderBottomWidth: ARROW,
@@ -269,10 +290,7 @@ function CoachOverlay({ visible, textKey, target, prefer, onNext, onClose }) {
         }
       : {
           position: 'absolute',
-          left: Math.min(
-            Math.max(bubbleLeft + 16, target.x + target.width / 2 - ARROW),
-            bubbleLeft + BUBBLE_MAX_W - 16
-          ),
+          left: Math.min(Math.max(bubbleLeft + 16, target.x + target.width / 2 - ARROW), bubbleLeft + BUBBLE_MAX_W - 16),
           top: bubbleTop + guessH + ARROW,
           width: 0, height: 0,
           borderLeftWidth: ARROW, borderRightWidth: ARROW, borderTopWidth: ARROW,

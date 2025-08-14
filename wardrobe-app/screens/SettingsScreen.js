@@ -15,6 +15,7 @@ import * as SecureStore from 'expo-secure-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../api/config';
 import { useLanguage } from '../i18n/LanguageProvider';
+import { useTutorial } from '../tutorial/TutorialProvider';
 
 const api = axios.create({ baseURL: API_BASE_URL });
 const LANGS = ['en', 'ru', 'de', 'fr', 'es'];
@@ -40,6 +41,7 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const { lang, t, setLanguage } = useLanguage();
 
+  const tutorial = useTutorial();
   const [loading, setLoading] = useState(false);
   const [tutorialOn, setTutorialOn] = useState(true);
 
@@ -85,11 +87,13 @@ export default function SettingsScreen() {
 
   const toggleTutorial = async (next) => {
     setTutorialOn(next); // optimistic
+    tutorial?.setEnabled?.(next);
     try {
       const token = await getToken();
       await api.put('/settings/tutorial', { enabled: next }, { headers: { Authorization: `Bearer ${token}` } });
     } catch {
       setTutorialOn(!next); // revert
+      tutorial?.setEnabled?.(!next);
       Alert.alert(t('common.error', 'Error'), t('common.tryAgain', 'Please try again.'));
     }
   };

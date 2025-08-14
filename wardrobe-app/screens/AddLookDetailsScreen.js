@@ -1,5 +1,5 @@
 // screens/AddLookDetailsScreen.js
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   SafeAreaView,
   View,
@@ -8,7 +8,6 @@ import {
   Image,
   TouchableOpacity,
   Button,
-  Alert,
   Dimensions,
   Platform,
 } from 'react-native';
@@ -17,7 +16,7 @@ import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import { API_BASE_URL } from '../api/config';
 import { useLanguage } from '../i18n/LanguageProvider';
-import { useTutorial } from '../tutorial/TutorialProvider';
+import { useTutorial, CoachMark } from '../tutorial/TutorialProvider';
 
 const api = axios.create({ baseURL: API_BASE_URL });
 
@@ -45,7 +44,7 @@ export default function AddLookDetailsScreen({ navigation, route }) {
   const { t } = useLanguage();
   const tutorial = useTutorial();
 
-  const baseUrl = route.params?.baseUrl;      // base photo we’ll save for this look
+  const baseUrl = route.params?.baseUrl;
   const itemIds = route.params?.itemIds || [];
 
   // i18n-driven tag sets
@@ -55,23 +54,27 @@ export default function AddLookDetailsScreen({ navigation, route }) {
   const [saving, setSaving] = useState(false);
   const [selected, setSelected] = useState({ season: [], occasion: [] });
 
-  // mark screen in tutorial & show the explanatory popup once
+  // show the “almost there” bubble once, above the first tag group
   const promptedRef = useRef(false);
   useFocusEffect(
     React.useCallback(() => {
       tutorial?.onScreen?.('AddLookDetails');
       tutorial?.startIfEnabled?.('AddLookDetails');
-      // Show the “Nice! here is your look!” popup only once per mount
+
       if (!promptedRef.current && tutorial?.isEnabled?.()) {
         promptedRef.current = true;
+        // Wait a tick so the <CoachMark id="addlook:tags" /> is measured
         setTimeout(() => {
-          Alert.alert(
-            t('tutorial.lookReadyTitle'),
-            t('tutorial.lookReadyBody')
-          );
-        }, 250);
+          tutorial.setNext?.({
+            anchorId: 'addlook:tags',
+            // Use whichever copy you prefer; this key should contain the message body.
+            textKey: 'tutorial.lookReadyBody',
+            screen: 'AddLookDetails',
+            prefer: 'above', // bubble above chips, arrow pointing down at them
+          });
+        }, 200);
       }
-    }, [tutorial, t])
+    }, [tutorial])
   );
 
   const toggle = (cat, value) => {
@@ -90,8 +93,9 @@ export default function AddLookDetailsScreen({ navigation, route }) {
 
   const onSave = async () => {
     if (!isValid) {
-      return Alert.alert(
-        t('addLook.missingTitle', 'Missing info'),
+      // keep this validation alert (it’s actionable)
+      return alert(
+        t('addLook.missingTitle', 'Missing info') + '\n' +
         t('addLook.missingBody', 'Pick at least one Season and Occasion.')
       );
     }
@@ -104,37 +108,21 @@ export default function AddLookDetailsScreen({ navigation, route }) {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      // Success — tutorial completion popup + turn tutorial off
-      Alert.alert(
-        t('tutorial.finishTitle'),
-        t('tutorial.finishBody'),
-        [
-          {
-            text: 'OK',
-            onPress: async () => {
-              // Turn off tutorial locally (provider) and remotely (settings)
-              try {
-                tutorial?.complete?.(); // or tutorial?.disable?.() depending on your provider
-                if (token) {
-                  await api.put(
-                    '/settings/tutorial',
-                    { enabled: false },
-                    { headers: { Authorization: `Bearer ${token}` } }
-                  );
-                }
-              } catch {
-                // non-fatal if network fails
-              }
-              navigation.navigate('Profile');
-            },
-          },
-        ]
-      );
+      // Finish tutorial & go to Profile
+      try {
+        tutorial?.complete?.();
+        tutorial?.setEnabled?.(false);
+        if (token) {
+          await api.put(
+            '/settings/tutorial',
+            { enabled: false },
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+        }
+      } catch {}
+      navigation.navigate('Profile');
     } catch (e) {
-      Alert.alert(
-        t('common.saveFailed', 'Failed to save'),
-        e?.response?.data?.message || e.message || t('common.tryAgain', 'Please try again.')
-      );
+      alert(t('common.saveFailed', 'Failed to save'));
     } finally {
       setSaving(false);
     }
@@ -143,7 +131,7 @@ export default function AddLookDetailsScreen({ navigation, route }) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
-        {/* Preview of the look (base photo for now) */}
+        {/* Look preview */}
         <View
           style={{
             marginTop: 16,
@@ -157,22 +145,24 @@ export default function AddLookDetailsScreen({ navigation, route }) {
           <Image source={{ uri: baseUrl }} style={{ width: '100%', height: '100%', resizeMode: 'contain' }} />
         </View>
 
-        {/* Season */}
-        <View style={{ marginTop: 14 }}>
-          <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 10 }}>
-            {t('tags.season.title', 'Season')}
-          </Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-            {SEASONS.map(v => (
-              <Chip
-                key={v}
-                label={t(`tags.season.${v}`, v)}
-                active={(selected.season || []).includes(v)}
-                onPress={() => toggle('season', v)}
-              />
-            ))}
+        {/* Season (ANCHOR for the bubble) */}
+        <CoachMark id="addlook:tags">
+          <View style={{ marginTop: 14 }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 10 }}>
+              {t('tags.season.title', 'Season')}
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+              {SEASONS.map(v => (
+                <Chip
+                  key={v}
+                  label={t(`tags.season.${v}`, v)}
+                  active={(selected.season || []).includes(v)}
+                  onPress={() => toggle('season', v)}
+                />
+              ))}
+            </View>
           </View>
-        </View>
+        </CoachMark>
 
         {/* Occasion */}
         <View style={{ marginTop: 14 }}>
