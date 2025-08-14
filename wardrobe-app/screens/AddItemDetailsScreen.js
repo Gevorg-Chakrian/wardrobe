@@ -13,7 +13,6 @@ import { CoachMark, useTutorial } from '../tutorial/TutorialProvider';
 
 const api = axios.create({ baseURL: API_BASE_URL });
 
-// store keys (don’t translate these)
 const TAGS = {
   color: ['black','white','gray','beige','brown','navy','blue','green','yellow','orange','red','pink','purple','gold','silver'],
   season: ['spring','summer','autumn','winter','all-season'],
@@ -57,7 +56,10 @@ const toArray = (v) => Array.isArray(v) ? v : (v ? [v] : []);
 export default function AddItemScreen({ navigation, route }) {
   const { t } = useLanguage();
   const tutorial = useTutorial();
-  const shownOnceRef = useRef(false); // make sure we only inject this step once
+
+  // ensure we only try to show step 2 once per mount (+ one fallback retry)
+  const requestedRef = useRef(false);
+  const retriedRef = useRef(false);
 
   const imageUrl    = route.params?.imageUrl;
   const initialType = (route.params?.initialType || 'tshirt').toLowerCase();
@@ -80,25 +82,37 @@ export default function AddItemScreen({ navigation, route }) {
   const [heroUrl, setHeroUrl] = useState(imageUrl);
   const [extracting, setExtracting] = useState(false);
 
-  // Tell the tutorial which screen we're on and show the “choose tags” coach bubble.
+  // mark screen + schedule the “choose tags” coach bubble ABOVE the colors
   useFocusEffect(
     React.useCallback(() => {
       tutorial?.onScreen?.('AddItemDetails');
-      // keep the main flow running if it was started
-      tutorial?.startIfEnabled?.('AddItemDetails');
+      tutorial?.startIfEnabled?.();
 
-      // Inject the “choose tags” step as a bubble anchored to the first section (color)
-      if (!shownOnceRef.current && tutorial?.isEnabled?.()) {
-        shownOnceRef.current = true;
-        // a tiny delay lets the layout settle so the anchor is measured
+      const schedule = (delay) =>
         setTimeout(() => {
-          tutorial.setNext?.({
-            anchorId: 'additem:tagSection',
-            textKey: 'tutorial.chooseTags',
-            screen: 'AddItemDetails',
-          });
-        }, 250);
-      }
+          if (tutorial?.isEnabled?.()) {
+            requestedRef.current = true;
+            tutorial.setNext?.({
+              anchorId: 'additem:colors',
+              textKey: 'tutorial.chooseTags',
+              screen: 'AddItemDetails',
+              prefer: 'above',
+            });
+          }
+        }, delay);
+
+      // first attempt after layout settles
+      if (!requestedRef.current) schedule(600);
+
+      // fallback retry (if anchor wasn’t ready the first time)
+      const retry = setTimeout(() => {
+        if (!retriedRef.current) {
+          retriedRef.current = true;
+          schedule(1200);
+        }
+      }, 800);
+
+      return () => clearTimeout(retry);
     }, [tutorial])
   );
 
@@ -165,11 +179,20 @@ export default function AddItemScreen({ navigation, route }) {
           {
             text: 'OK',
             onPress: () => {
+              // Always return to Wardrobe
+              navigation.goBack();
+
+              // If tutorial is enabled, show the next nudge on Wardrobe AFTER we are back,
+              // pointing to the Profile tab.
               if (tutorial?.isEnabled?.()) {
-                // continue the onboarding to Profile/CreateLook
-                navigation.navigate('Profile');
-              } else {
-                navigation.goBack();
+                setTimeout(() => {
+                  tutorial.setNext?.({
+                    anchorId: 'nav:profile',
+                    textKey: 'tutorial.gotoProfile',
+                    screen: 'Wardrobe',
+                    prefer: 'above',
+                  });
+                }, 300);
               }
             }
           }
@@ -182,7 +205,6 @@ export default function AddItemScreen({ navigation, route }) {
     }
   };
 
-  // localized titles
   const TITLES = {
     color:    t('tags.color.title'),
     season:   t('tags.season.title'),
@@ -222,8 +244,8 @@ export default function AddItemScreen({ navigation, route }) {
           </View>
         )}
 
-        {/* COLOR section — anchor the tutorial bubble here */}
-        <CoachMark id="additem:tagSection">
+        {/* COLOR section — tutorial anchor */}
+        <CoachMark id="additem:colors">
           <Section title={TITLES.color}>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
               {TAGS.color.map((c) => (
@@ -263,7 +285,6 @@ export default function AddItemScreen({ navigation, route }) {
         ))}
 
         <View style={{ height: 16 }} />
-        {/* Optional: anchor for a future “tap Save” coach step */}
         <CoachMark id="additem:save">
           <Button
             title={saving ? t('common.saving') : (isEditing ? t('addItem.saveChanges') : t('addItem.saveItem'))}

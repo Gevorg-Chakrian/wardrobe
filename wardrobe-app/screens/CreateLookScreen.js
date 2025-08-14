@@ -18,10 +18,10 @@ const api = axios.create({ baseURL: API_BASE_URL });
 export default function CreateLookScreen({ navigation }) {
   const tutorial = useTutorial();
 
-  // guards/flags for tutorial timing
-  const step5ShownRef = useRef(false);          // show "Add my photo" once
-  const uploadJustHappenedRef = useRef(false);  // set right after upload
-  const lastUploadedBaseUrlRef = useRef(null);  // to auto-select the newly uploaded base
+  // tutorial guards
+  const step5ShownRef = useRef(false);
+  const uploadJustHappenedRef = useRef(false);
+  const lastUploadedBaseUrlRef = useRef(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -46,6 +46,8 @@ export default function CreateLookScreen({ navigation }) {
   const [expandedType, setExpandedType] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  const baseScrollRef = useRef(null);
+
   const getToken = async () => SecureStore.getItemAsync('token');
 
   const fetchWardrobe = useCallback(async () => {
@@ -57,21 +59,18 @@ export default function CreateLookScreen({ navigation }) {
 
       const bases = all.filter(it => (it.item_type || it.itemType) === 'profile');
       const clothes = all.filter(it => (it.item_type || it.itemType) !== 'profile');
-
       setBasePhotos(bases);
 
-      // Prefer auto-selecting the just-added base; otherwise keep current; otherwise first
+      // keep current selection or select the one just uploaded, else pick first
       if (bases.length > 0) {
+        const byUrl = (b) => (b.image_url || b.imageUrl || b.url);
         if (lastUploadedBaseUrlRef.current) {
-          const m = bases.find(b => (b.image_url || b.imageUrl || b.url) === lastUploadedBaseUrlRef.current);
-          if (m) setSelectedBase({ id: m.id, url: m.image_url || m.imageUrl || m.url });
-          lastUploadedBaseUrlRef.current = null;
+          const m = bases.find(b => byUrl(b) === lastUploadedBaseUrlRef.current);
+          if (m) setSelectedBase({ id: m.id, url: byUrl(m) });
         } else {
-          setSelectedBase(prev => {
-            if (prev && bases.some(b => b.id === prev.id)) return prev;
-            const b0 = bases[0];
-            return { id: b0.id, url: b0.image_url || b0.imageUrl || b0.url };
-          });
+          setSelectedBase(prev => (prev && bases.some(b => b.id === prev.id))
+            ? prev
+            : { id: bases[0].id, url: byUrl(bases[0]) });
         }
       }
 
@@ -90,7 +89,7 @@ export default function CreateLookScreen({ navigation }) {
 
   useFocusEffect(useCallback(() => { fetchWardrobe(); }, [fetchWardrobe]));
 
-  /** STEP 5: show “Add my photo” bubble if there are no base photos yet */
+  // Step 5: “Add my photo” if no base yet
   useEffect(() => {
     if (!tutorial?.isEnabled?.()) return;
     if (step5ShownRef.current) return;
@@ -98,44 +97,38 @@ export default function CreateLookScreen({ navigation }) {
 
     InteractionManager.runAfterInteractions(() => {
       setTimeout(() => {
-        tutorial.onScreen('CreateLook');
         tutorial.setNext?.({
           anchorId: 'create:addPhoto',
           textKey: 'tutorial.addMyPhoto',
           screen: 'CreateLook',
-          prefer: 'below', // bubble under button, arrow up to it
+          prefer: 'below',
         });
         step5ShownRef.current = true;
       }, 120);
     });
   }, [basePhotos.length, tutorial]);
 
-  /**
-   * After uploading a base photo and reloading data:
-   *  - expand the first clothes type (so create:item anchor exists)
-   *  - wait for layout to complete (interactions + 2×RAF)
-   *  - queue steps 6–8 in order via queueFront
-   */
+  // After upload: scroll to the start and queue chooseBase(first) → pickItem → continue
   useEffect(() => {
     if (!uploadJustHappenedRef.current) return;
     if (basePhotos.length === 0) return;
 
-    // Expand the first clothes section so the 'create:item' CoachMark exists/measures
+    // expand first clothes section so create:item anchor exists
     const typeKeys = Object.keys(clothesByType).sort();
     if (typeKeys.length > 0) setExpandedType(typeKeys[0]);
 
-    const queueTrio = () => {
-      tutorial.queueFront?.([
-        { screen: 'CreateLook', anchorId: 'create:base',     textKey: 'tutorial.chooseBase', prefer: 'above' },
-        { screen: 'CreateLook', anchorId: 'create:item',     textKey: 'tutorial.pickItem',   prefer: 'below' },
-        { screen: 'CreateLook', anchorId: 'create:continue', textKey: 'tutorial.continue',   prefer: 'above' },
-      ]);
-      uploadJustHappenedRef.current = false;
-    };
-
     InteractionManager.runAfterInteractions(() => {
       requestAnimationFrame(() => {
-        requestAnimationFrame(queueTrio);
+        // ensure the leftmost tile is visible and measured
+        baseScrollRef.current?.scrollTo({ x: 0, animated: true });
+        requestAnimationFrame(() => {
+          tutorial.queueFront?.([
+            { screen: 'CreateLook', anchorId: 'create:base:first', textKey: 'tutorial.chooseBase', prefer: 'right' },
+            { screen: 'CreateLook', anchorId: 'create:item',       textKey: 'tutorial.pickItem',   prefer: 'below' },
+            { screen: 'CreateLook', anchorId: 'create:continue',   textKey: 'tutorial.continue',   prefer: 'above' },
+          ]);
+          uploadJustHappenedRef.current = false;
+        });
       });
     });
   }, [basePhotos.length, clothesByType, tutorial]);
@@ -171,9 +164,8 @@ export default function CreateLookScreen({ navigation }) {
       await api.post('/wardrobe', { image_url: imageUrl, item_type: 'profile' },
         { headers: { Authorization: `Bearer ${token}` } });
 
-      // mark that we just uploaded, remember URL for auto-select, then reload
       lastUploadedBaseUrlRef.current = imageUrl;
-      uploadJustHappenedRef.current = true;
+      uploadJustHappenedRef.current  = true;
       await fetchWardrobe();
     } catch (e) {
       Alert.alert(t('common.uploadFailed'), e?.response?.data?.message || e.message || t('common.tryAgain'));
@@ -247,13 +239,8 @@ export default function CreateLookScreen({ navigation }) {
                   key={item.id}
                   onPress={() => handlePick(type, item.id)}
                   style={{
-                    width: 100,
-                    height: 100,
-                    borderRadius: 10,
-                    overflow: 'hidden',
-                    borderWidth: picked ? 3 : 0,
-                    borderColor: '#1976D2',
-                    backgroundColor: '#eee'
+                    width: 100, height: 100, borderRadius: 10, overflow: 'hidden',
+                    borderWidth: picked ? 3 : 0, borderColor: '#1976D2', backgroundColor: '#eee'
                   }}
                   activeOpacity={0.85}
                 >
@@ -261,11 +248,8 @@ export default function CreateLookScreen({ navigation }) {
                 </TouchableOpacity>
               );
 
-              // Wrap the first tile so the 'create:item' anchor is guaranteed
               return idx === 0 ? (
-                <CoachMark id="create:item" key={item.id}>
-                  {Tile}
-                </CoachMark>
+                <CoachMark id="create:item" key={item.id}>{Tile}</CoachMark>
               ) : Tile;
             })}
           </View>
@@ -284,44 +268,42 @@ export default function CreateLookScreen({ navigation }) {
             <TouchableOpacity
               onPress={addProfilePhoto}
               activeOpacity={0.9}
-              style={{
-                paddingHorizontal: 14,
-                paddingVertical: Platform.OS === 'ios' ? 10 : 8,
-                borderRadius: 8,
-                backgroundColor: '#1976D2'
-              }}
+              style={{ paddingHorizontal: 14, paddingVertical: Platform.OS === 'ios' ? 10 : 8, borderRadius: 8, backgroundColor: '#1976D2' }}
             >
-              <Text style={{ color: '#fff', fontWeight: '600' }}>
-                {t('createLook.addMyPhoto')}
-              </Text>
+              <Text style={{ color: '#fff', fontWeight: '600' }}>{t('createLook.addMyPhoto')}</Text>
             </TouchableOpacity>
           </CoachMark>
         </View>
 
-        {/* Base scroller (Step 6 anchor) */}
+        {/* Base scroller — FIRST tile gets the dedicated anchor */}
         <CoachMark id="create:base">
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+          <ScrollView
+            ref={baseScrollRef}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ marginBottom: 16 }}
+          >
             {basePhotos.length === 0 ? (
               <Text style={{ color: '#666' }}>{t('createLook.noPhotos')}</Text>
             ) : (
-              basePhotos.map((p) => {
+              basePhotos.map((p, idx) => {
                 const uri = p.image_url || p.imageUrl || p.url;
                 const isSelected = selectedBase?.id === p.id;
-                const confirmDelete = () => {
-                  Alert.alert(
-                    t('createLook.deleteBaseTitle'),
-                    t('createLook.deleteBaseBody'),
-                    [
-                      { text: t('common.cancel'), style: 'cancel' },
-                      { text: t('common.delete'), style: 'destructive', onPress: () => deleteBasePhoto(p.id) },
-                    ]
-                  );
-                };
-                return (
+
+                const Body = (
                   <TouchableOpacity
                     key={p.id}
                     onPress={() => setSelectedBase({ id: p.id, url: uri })}
-                    onLongPress={confirmDelete}
+                    onLongPress={() => {
+                      Alert.alert(
+                        t('createLook.deleteBaseTitle'),
+                        t('createLook.deleteBaseBody'),
+                        [
+                          { text: t('common.cancel'), style: 'cancel' },
+                          { text: t('common.delete'), style: 'destructive', onPress: () => deleteBasePhoto(p.id) },
+                        ]
+                      );
+                    }}
                     delayLongPress={400}
                     style={{ marginRight: 10 }}
                     activeOpacity={0.85}
@@ -329,21 +311,23 @@ export default function CreateLookScreen({ navigation }) {
                     <Image
                       source={{ uri }}
                       style={{
-                        width: 110,
-                        height: 110,
-                        borderRadius: 10,
+                        width: 110, height: 110, borderRadius: 10,
                         borderWidth: isSelected ? 3 : 1,
                         borderColor: isSelected ? '#1976D2' : '#ddd'
                       }}
                     />
                   </TouchableOpacity>
                 );
+
+                // anchor the LEFTMOST tile so bubble appears on its right
+                return idx === 0
+                  ? <CoachMark id="create:base:first" key={p.id}>{Body}</CoachMark>
+                  : Body;
               })
             )}
           </ScrollView>
         </CoachMark>
 
-        {/* Clothes header (kept for context; tutorial points to first item instead) */}
         <CoachMark id="create:type">
           <Text style={{ fontSize: 20, fontWeight: '800', marginBottom: 10 }}>{t('createLook.pickClothes')}</Text>
         </CoachMark>
@@ -352,7 +336,6 @@ export default function CreateLookScreen({ navigation }) {
           <Section key={type} type={type} items={clothesByType[type]} />
         ))}
 
-        {/* Continue (Step 8 anchor) */}
         <CoachMark id="create:continue">
           <View style={{ marginTop: 20 }}>
             <TouchableOpacity
@@ -366,18 +349,10 @@ export default function CreateLookScreen({ navigation }) {
                 });
               }}
               activeOpacity={0.9}
-              style={{
-                height: 44,
-                borderRadius: 10,
-                backgroundColor: '#1976D2',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
+              style={{ height: 44, borderRadius: 10, backgroundColor: '#1976D2', alignItems: 'center', justifyContent: 'center' }}
               disabled={loading}
             >
-              <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>
-                {t('common.continue')}
-              </Text>
+              <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>{t('common.continue')}</Text>
             </TouchableOpacity>
           </View>
         </CoachMark>

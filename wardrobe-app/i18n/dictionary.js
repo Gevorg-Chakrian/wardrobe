@@ -195,7 +195,7 @@ export default {
       pickType: 'Pick a clothing type to add.',
       pickItem: 'Choose the specific item from your wardrobe.',
       continue: 'When ready, tap Continue.',
-      whenWhere: 'Nice! Here’s your look! Now choose when and where you want to wear it.',
+      lookReadyBody: 'Nice! Here’s your look! Now choose when and where you want to wear it.',
       finished: 'Good job! You’re ready to add more clothes to your virtual wardrobe and create more looks!',
       tapAnywhere: 'Tap anywhere to continue'
     }
@@ -399,7 +399,7 @@ export default {
       pickType: 'Выберите тип одежды для добавления.',
       pickItem: 'Выберите конкретную вещь из гардероба.',
       continue: 'Готовы? Нажмите «Продолжить».',
-      whenWhere: 'Отлично! Вот ваш образ. Теперь укажите, когда и где вы его наденете.',
+      lookReadyBody: 'Отлично! Вот ваш образ. Теперь укажите, когда и где вы его наденете.',
       finished: 'Отличная работа! Добавляйте новые вещи и создавайте больше образов!',
       tapAnywhere: 'Нажмите в любом месте, чтобы продолжить'
     }
@@ -601,7 +601,7 @@ export default {
       pickType: 'Wähle einen Kleidungstyp zum Hinzufügen.',
       pickItem: 'Wähle das konkrete Teil aus deinem Kleiderschrank.',
       continue: 'Wenn fertig, tippe auf „Weiter“.',
-      whenWhere: 'Top! Hier ist dein Look. Wähle nun, wann und wo du ihn tragen möchtest.',
+      lookReadyBody: 'Top! Hier ist dein Look. Wähle nun, wann und wo du ihn tragen möchtest.',
       finished: 'Gut gemacht! Du bist bereit, mehr Kleidung hinzuzufügen und weitere Looks zu erstellen!',
       tapAnywhere: 'Zum Fortfahren irgendwo tippen'
     }
@@ -803,7 +803,7 @@ export default {
       pickType: 'Choisissez un type de vêtement à ajouter.',
       pickItem: 'Choisissez l’article précis dans votre garde‑robe.',
       continue: 'Quand vous êtes prêt, touchez « Continuer ».',
-      whenWhere: 'Super ! Voici votre look. Choisissez maintenant quand et où vous voulez le porter.',
+      lookReadyBody: 'Super ! Voici votre look. Choisissez maintenant quand et où vous voulez le porter.',
       finished: 'Bravo ! Vous pouvez ajouter d’autres vêtements et créer encore plus de looks !',
       tapAnywhere: 'Touchez n’importe où pour continuer'
     }
@@ -1005,7 +1005,7 @@ export default {
       pickType: 'Elige un tipo de prenda para añadir.',
       pickItem: 'Elige el artículo concreto de tu armario.',
       continue: 'Cuando estés listo, pulsa «Continuar».',
-      whenWhere: '¡Genial! Aquí está tu look. Ahora elige cuándo y dónde quieres llevarlo.',
+      lookReadyBody: '¡Genial! Aquí está tu look. Ahora elige cuándo y dónde quieres llevarlo.',
       finished: '¡Buen trabajo! Ya puedes añadir más prendas a tu armario virtual y crear más looks.',
       tapAnywhere: 'Toca en cualquier parte para continuar'
     }

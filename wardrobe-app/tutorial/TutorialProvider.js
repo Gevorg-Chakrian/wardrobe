@@ -1,9 +1,8 @@
-// tutorial/TutorialProvider.js
 import React, {
   createContext, useCallback, useContext, useEffect,
   useMemo, useRef, useState
 } from 'react';
-import { View, Text, Modal, Pressable } from 'react-native';
+import { View, Text, Modal, Pressable, Dimensions } from 'react-native';
 
 const TutorialContext = createContext(null);
 export const useTutorial = () => useContext(TutorialContext);
@@ -16,62 +15,74 @@ export function TutorialProvider({ children }) {
   // engine state
   const [running, setRunning] = useState(false);
   const [currentScreen, setCurrentScreen] = useState(null);
-  const [currentStep, setCurrentStep] = useState(null); // { id, screen, anchorId, textKey, prefer? }
+  const [currentStep, setCurrentStep] = useState(null); // {id,screen,anchorId,textKey,prefer}
+  const queueRef = useRef([]);     // FIFO queue of steps
+  const startedRef = useRef(false); // first-run seeding guard
 
-  const queueRef = useRef([]);           // steps queue
-  const startedRef = useRef(false);      // idempotency guard
-
-  // anchors registry
-  const anchorsRef = useRef(new Map());  // id -> { x,y,width,height }
+  // anchors
+  const anchorsRef = useRef(new Map()); // id -> {x,y,width,height}
   const [anchorVersion, setAnchorVersion] = useState(0);
 
-  // overlay UI (derived from currentStep + anchor)
+  // overlay derived
   const [overlayVisible, setOverlayVisible] = useState(false);
   const [overlayText, setOverlayText] = useState('');
   const [overlayTarget, setOverlayTarget] = useState(null);
-  const [overlayPrefer, setOverlayPrefer] = useState(null); // 'above' | 'below' | null
+  const [overlayPrefer, setOverlayPrefer] = useState(null); // 'above' | 'below' | 'right' | 'left' | null
 
-  /** Screens call this on focus */
+  /** ---------- default flow (seeded on first start) ---------- */
+  const DEFAULT_FLOW = useRef([
+    // Step 1: Wardrobe → Add Item (bubble below, arrow pointing up to the button)
+    { id: 'wardrobe:add', screen: 'Wardrobe', anchorId: 'wardrobe:addItem', textKey: 'tutorial.choosePhoto', prefer: 'below' },
+
+    // Step 2: type modal (kept so it appears if modal is already open)
+    { id: 'wardrobe:type', screen: 'Wardrobe', anchorId: 'wardrobe:typePicker', textKey: 'tutorial.pickType', prefer: 'above' },
+
+    // Step 3: AddItemDetails → colors section (above)
+    { id: 'additem:colors', screen: 'AddItemDetails', anchorId: 'additem:tagSection', textKey: 'tutorial.chooseTags', prefer: 'above' },
+
+    // Step 4: Wardrobe → bottom Profile tab (above)
+    { id: 'wardrobe:profile', screen: 'Wardrobe', anchorId: 'nav:profile', textKey: 'tutorial.gotoProfile', prefer: 'above' },
+
+    // Step 5: Profile → Create Look (below)
+    { id: 'profile:create', screen: 'Profile', anchorId: 'profile:createLook', textKey: 'tutorial.createLook', prefer: 'below' },
+
+    // Step 6: CreateLook → Add my photo (below)
+    { id: 'create:addPhoto', screen: 'CreateLook', anchorId: 'create:addPhoto', textKey: 'tutorial.addMyPhoto', prefer: 'below' },
+    // The post-upload trio is injected with queueFront() elsewhere.
+  ]);
+
+  /** ---------- core helpers ---------- */
+  const ensureRunning = useCallback(() => {
+    if (!enabled) return false;
+    if (!running) setRunning(true);
+    return true;
+  }, [enabled, running]);
+
   const onScreen = useCallback((screenName) => {
     setCurrentScreen(prev => (prev === screenName ? prev : screenName));
   }, []);
 
-  /** Start tutorial once, if enabled */
+  /** Start once and seed the default flow on first call */
   const startIfEnabled = useCallback(() => {
-    if (!enabled || startedRef.current) return;
+    if (!enabled) return;
+    if (!startedRef.current) {
+      startedRef.current = true;
 
-    const steps = [
-      // Wardrobe
-      { id: 'wardrobe:add',    screen: 'Wardrobe',       anchorId: 'wardrobe:addItem',  textKey: 'tutorial.choosePhoto' },
-
-      // AddItemDetails – show bubble ABOVE colors row
-      { id: 'additem:colors',  screen: 'AddItemDetails', anchorId: 'additem:colors',    textKey: 'tutorial.chooseTags', prefer: 'above' },
-
-      // Profile -> Create look
-      { id: 'profile:go',      screen: 'Profile',        anchorId: 'profile:create',    textKey: 'tutorial.gotoProfile' },
-
-      // CreateLook flow
-      { id: 'create:addPhoto', screen: 'CreateLook',     anchorId: 'create:addPhoto',   textKey: 'tutorial.addMyPhoto' },
-      { id: 'create:base',     screen: 'CreateLook',     anchorId: 'create:base',       textKey: 'tutorial.chooseBase' },
-      { id: 'create:type',     screen: 'CreateLook',     anchorId: 'create:type',       textKey: 'tutorial.pickType' },
-      { id: 'create:continue', screen: 'CreateLook',     anchorId: 'create:continue',   textKey: 'tutorial.continue' },
-
-      // If you wrap AddLookDetails "Save" button later:
-      // { id: 'addlook:save', screen: 'AddLook', anchorId: 'addlook:save', textKey: 'tutorial.whenWhere' },
-    ];
-
-    queueRef.current = steps;
-    startedRef.current = true;
+      const flow = DEFAULT_FLOW.current.slice();
+      if (flow.length) {
+        const [head, ...rest] = flow;
+        queueRef.current = rest;
+        setCurrentStep(head);
+        setRunning(true);
+        return;
+      }
+    }
     setRunning(true);
-
-    // prime the first step
-    const [head, ...rest] = steps;
-    queueRef.current = rest;
-    setCurrentStep(head);
   }, [enabled]);
 
-  /** Jump to an ad‑hoc step (optional) */
+  /** Show a specific step immediately */
   const setNext = useCallback(({ anchorId, textKey, screen, prefer }) => {
+    if (!ensureRunning()) return;
     setCurrentStep({
       id: `custom:${Date.now()}`,
       anchorId,
@@ -79,22 +90,42 @@ export function TutorialProvider({ children }) {
       screen: screen || currentScreen,
       prefer: prefer || null,
     });
-  }, [currentScreen]);
+  }, [currentScreen, ensureRunning]);
 
-  /** Anchors register their layout */
+  /** Queue steps right after current (or start immediately if idle) */
+  const queueFront = useCallback((steps) => {
+    if (!steps || steps.length === 0) return;
+    if (!ensureRunning()) return;
+
+    const payload = steps.map((s, i) => ({
+      id: s.id || `q:${Date.now()}-${i}`,
+      screen: s.screen || currentScreen,
+      anchorId: s.anchorId,
+      textKey: s.textKey,
+      prefer: s.prefer || null,
+    }));
+
+    if (!currentStep) {
+      const [head, ...rest] = payload;
+      queueRef.current = rest.concat(queueRef.current);
+      setCurrentStep(head);
+    } else {
+      queueRef.current = payload.concat(queueRef.current);
+    }
+  }, [currentScreen, ensureRunning, currentStep]);
+
+  /** Anchors register their position */
   const registerAnchor = useCallback((id, layout) => {
     const prev = anchorsRef.current.get(id);
-    if (
-      !prev ||
-      prev.x !== layout.x || prev.y !== layout.y ||
-      prev.width !== layout.width || prev.height !== layout.height
-    ) {
+    if (!prev ||
+        prev.x !== layout.x || prev.y !== layout.y ||
+        prev.width !== layout.width || prev.height !== layout.height) {
       anchorsRef.current.set(id, layout);
       setAnchorVersion(v => v + 1);
     }
   }, []);
 
-  /** Advance the queue */
+  /** Advance to the next queued step (or stop) */
   const next = useCallback(() => {
     setCurrentStep(null);
     const q = queueRef.current;
@@ -108,16 +139,15 @@ export function TutorialProvider({ children }) {
     setCurrentStep(head);
   }, []);
 
-  /** Finish and reset */
+  /** Finish everything */
   const complete = useCallback(() => {
     queueRef.current = [];
     setCurrentStep(null);
     setOverlayVisible(false);
     setRunning(false);
-    startedRef.current = false;
   }, []);
 
-  /** Decide when to show the overlay */
+  /** Drive overlay only when anchor is measured & screen matches */
   useEffect(() => {
     if (!running || !currentStep) { setOverlayVisible(false); return; }
     if (currentScreen !== currentStep.screen) { setOverlayVisible(false); return; }
@@ -126,7 +156,7 @@ export function TutorialProvider({ children }) {
 
     setOverlayTarget(anchor);
     setOverlayText(currentStep.textKey || '');
-    setOverlayPrefer(currentStep.prefer || null); // respect per‑step placement hint
+    setOverlayPrefer(currentStep.prefer || null);
     setOverlayVisible(true);
   }, [running, currentStep, currentScreen, anchorVersion]);
 
@@ -134,6 +164,7 @@ export function TutorialProvider({ children }) {
     onScreen,
     startIfEnabled,
     setNext,
+    queueFront,
     next,
     complete,
     enabled,
@@ -141,7 +172,7 @@ export function TutorialProvider({ children }) {
     registerAnchor,
     isEnabled: () => enabled,
     isRunning: () => running,
-  }), [onScreen, startIfEnabled, setNext, next, complete, enabled, registerAnchor, running]);
+  }), [onScreen, startIfEnabled, setNext, queueFront, next, complete, enabled, registerAnchor, running]);
 
   return (
     <TutorialContext.Provider value={value}>
@@ -150,7 +181,7 @@ export function TutorialProvider({ children }) {
         visible={overlayVisible}
         textKey={overlayText}
         target={overlayTarget}
-        prefer={overlayPrefer}   // NEW: pass placement preference
+        prefer={overlayPrefer}
         onNext={next}
         onClose={complete}
       />
@@ -158,57 +189,96 @@ export function TutorialProvider({ children }) {
   );
 }
 
-/** Overlay bubble with arrow; honors prefer='above' | 'below' */
+/** ---------- Overlay UI (arrow + smart placement) ---------- */
 function CoachOverlay({ visible, textKey, target, prefer, onNext, onClose }) {
   const { useLanguage } = require('../i18n/LanguageProvider');
   const { t } = useLanguage?.() || { t: (k, d) => d || k };
   if (!visible || !target) return null;
 
-  const { width: W, height: H } = require('react-native').Dimensions.get('window');
+  const { width: W, height: H } = Dimensions.get('window');
   const BUBBLE_MAX_W = 280;
   const MARGIN = 10;
   const ARROW = 10;
-  const guessH = 88; // conservative bubble height guess
+  const guessH = 72;
+  const guessW = 200;
 
-  // Decide placement: respect prefer first, fallback to auto (below if space)
-  const canPlaceBelow = target.y + target.height + MARGIN + guessH + MARGIN < H;
-  const placeBelow =
-    prefer === 'below' ? true  :
-    prefer === 'above' ? false :
-    canPlaceBelow;
+  // Compute bubble position + arrow based on "prefer"
+  let bubbleTop, bubbleLeft, arrowStyle;
 
-  const bubbleTop = placeBelow
-    ? target.y + target.height + MARGIN + ARROW
-    : Math.max(MARGIN, target.y - guessH - MARGIN - ARROW);
+  if (prefer === 'right' || prefer === 'left') {
+    // Vertical alignment (clamped to screen)
+    bubbleTop = Math.max(MARGIN, Math.min(target.y, H - guessH - MARGIN));
 
-  const bubbleLeft = Math.min(
-    Math.max(MARGIN, target.x),
-    W - BUBBLE_MAX_W - MARGIN
-  );
-
-  const arrowStyle = placeBelow
-    ? {
+    if (prefer === 'right') {
+      bubbleLeft = Math.min(target.x + target.width + MARGIN + ARROW, W - BUBBLE_MAX_W - MARGIN);
+      arrowStyle = {
         position: 'absolute',
-        left: Math.min(
-          Math.max(bubbleLeft + 16, target.x + target.width / 2 - ARROW),
-          bubbleLeft + BUBBLE_MAX_W - 16
+        top: Math.max(
+          bubbleTop + 16,
+          Math.min(target.y + target.height / 2 - ARROW, bubbleTop + guessH - 16)
         ),
-        top: target.y + target.height + MARGIN,
+        left: Math.min(target.x + target.width + MARGIN, W - MARGIN - ARROW * 2),
         width: 0, height: 0,
-        borderLeftWidth: ARROW, borderRightWidth: ARROW, borderBottomWidth: ARROW,
-        borderLeftColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: '#111',
-      }
-    : {
-        position: 'absolute',
-        left: Math.min(
-          Math.max(bubbleLeft + 16, target.x + target.width / 2 - ARROW),
-          bubbleLeft + BUBBLE_MAX_W - 16
-        ),
-        top: bubbleTop + guessH + ARROW,
-        width: 0, height: 0,
-        borderLeftWidth: ARROW, borderRightWidth: ARROW, borderTopWidth: ARROW,
-        borderLeftColor: 'transparent', borderRightColor: 'transparent', borderTopColor: '#111',
+        borderTopWidth: ARROW, borderBottomWidth: ARROW, borderLeftWidth: ARROW,
+        borderTopColor: 'transparent', borderBottomColor: 'transparent', borderLeftColor: '#111',
       };
+    } else {
+      // left
+      bubbleLeft = Math.max(MARGIN, target.x - (MARGIN + ARROW + guessW));
+      arrowStyle = {
+        position: 'absolute',
+        top: Math.max(
+          bubbleTop + 16,
+          Math.min(target.y + target.height / 2 - ARROW, bubbleTop + guessH - 16)
+        ),
+        left: Math.max(target.x - MARGIN - ARROW, MARGIN),
+        width: 0, height: 0,
+        borderTopWidth: ARROW, borderBottomWidth: ARROW, borderRightWidth: ARROW,
+        borderTopColor: 'transparent', borderBottomColor: 'transparent', borderRightColor: '#111',
+      };
+    }
+  } else {
+    // Above / below (auto if null)
+    const placeBelow =
+      prefer === 'below'
+        ? true
+        : prefer === 'above'
+          ? false
+          : (target.y + target.height + MARGIN + guessH + MARGIN < H);
+
+    bubbleTop = placeBelow
+      ? target.y + target.height + MARGIN + ARROW
+      : Math.max(MARGIN, target.y - guessH - MARGIN - ARROW);
+
+    bubbleLeft = Math.min(
+      Math.max(MARGIN, target.x),
+      W - BUBBLE_MAX_W - MARGIN
+    );
+
+    arrowStyle = placeBelow
+      ? {
+          position: 'absolute',
+          left: Math.min(
+            Math.max(bubbleLeft + 16, target.x + target.width / 2 - ARROW),
+            bubbleLeft + BUBBLE_MAX_W - 16
+          ),
+          top: target.y + target.height + MARGIN,
+          width: 0, height: 0,
+          borderLeftWidth: ARROW, borderRightWidth: ARROW, borderBottomWidth: ARROW,
+          borderLeftColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: '#111',
+        }
+      : {
+          position: 'absolute',
+          left: Math.min(
+            Math.max(bubbleLeft + 16, target.x + target.width / 2 - ARROW),
+            bubbleLeft + BUBBLE_MAX_W - 16
+          ),
+          top: bubbleTop + guessH + ARROW,
+          width: 0, height: 0,
+          borderLeftWidth: ARROW, borderRightWidth: ARROW, borderTopWidth: ARROW,
+          borderLeftColor: 'transparent', borderRightColor: 'transparent', borderTopColor: '#111',
+        };
+  }
 
   return (
     <Modal transparent animationType="fade" visible={visible} onRequestClose={onClose}>
@@ -238,7 +308,7 @@ function CoachOverlay({ visible, textKey, target, prefer, onNext, onClose }) {
   );
 }
 
-/** Wrap any clickable/visible target so we can measure it in window coords */
+/** Wrap any clickable target with <CoachMark id="..."> */
 export function CoachMark({ id, children }) {
   const { registerAnchor } = useTutorial() || {};
   const ref = React.useRef(null);

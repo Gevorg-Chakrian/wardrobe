@@ -14,7 +14,6 @@ import { API_BASE_URL } from '../api/config';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { CoachMark, useTutorial } from '../tutorial/TutorialProvider';
 
-
 const api = axios.create({ baseURL: API_BASE_URL });
 
 const MASTER_TYPES = [
@@ -32,14 +31,12 @@ const ROW_GAP = 12;
 
 const TILE_W = Math.floor((SCREEN_W - PAGE_SIDE_PADDING * 2 - ROW_GAP) / COLS);
 
-
-
 export default function WardrobeScreen({ navigation }) {
   const tutorial = useTutorial();
   useFocusEffect(useCallback(() => {
     tutorial.onScreen('Wardrobe');
-    tutorial.startIfEnabled('Wardrobe');
-  }, []));
+    tutorial.startIfEnabled();
+  }, [])); // eslint-disable-line react-hooks/exhaustive-deps
 
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
@@ -123,17 +120,10 @@ export default function WardrobeScreen({ navigation }) {
   const afterInteractions = () =>
     new Promise(r => InteractionManager.runAfterInteractions(r));
 
+  // Open the modal only (do not schedule the tutorial here; do it on onShow)
   const askTypeThenUpload = () => {
     setTypeSearch('');
     setTypeModalOpen(true);
-    // Nudge the tutorial to the next anchor (inside the modal)
-    setTimeout(() => {
-      tutorial.setNext({
-        anchorId: 'wardrobe:typePicker',
-        textKey: 'tutorial.pickType',   // uses your dictionary key
-        screen: 'Wardrobe',
-      });
-    }, 0);
   };
 
   const doPickAndUpload = async (chosenType) => {
@@ -347,7 +337,33 @@ export default function WardrobeScreen({ navigation }) {
       <BottomNav navigation={navigation} active="wardrobe" />
 
       {/* Upload type picker */}
-      <Modal visible={typeModalOpen} animationType="slide" transparent onDismiss={handleModalDismiss}>
+      <Modal
+        visible={typeModalOpen}
+        animationType="slide"
+        transparent
+        onDismiss={handleModalDismiss}
+        // SHOW STEP AFTER THE MODAL IS VISIBLE (Android needs this)
+        onShow={() => {
+          // first attempt
+          setTimeout(() => {
+            tutorial.setNext?.({
+              anchorId: 'wardrobe:typePicker',
+              textKey: 'tutorial.pickType',
+              screen: 'Wardrobe',
+              prefer: 'above',
+            });
+          }, 200);
+          // small retry if layout was still settling
+          setTimeout(() => {
+            tutorial.setNext?.({
+              anchorId: 'wardrobe:typePicker',
+              textKey: 'tutorial.pickType',
+              screen: 'Wardrobe',
+              prefer: 'above',
+            });
+          }, 700);
+        }}
+      >
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }}>
           <View style={{ backgroundColor: '#fff', padding: 16, paddingBottom: 24, borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '75%' }}>
             <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8 }}>{t('wardrobe.pickType')}</Text>

@@ -1,5 +1,5 @@
 // screens/ProfileScreen.js
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SafeAreaView, View, Text, TouchableOpacity, Image, FlatList, Dimensions, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomNav from '../components/BottomNav';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { CoachMark, useTutorial } from '../tutorial/TutorialProvider';
-import { useFocusEffect } from '@react-navigation/native'; // ⬅️ missing import added
+import { useFocusEffect } from '@react-navigation/native';
 
 const api = axios.create({ baseURL: API_BASE_URL });
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -17,7 +17,7 @@ const SIDE = 16;
 const GAP = 12;
 const COL_W = Math.floor((SCREEN_W - SIDE * 2 - GAP) / 2);
 
-/** ---- helpers: name + jwt decoding (no Node Buffer needed) ---- */
+/** ---- helpers ---- */
 function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 function base64UrlToBase64(s) {
   const n = s.replace(/-/g, '+').replace(/_/g, '/');
@@ -67,10 +67,23 @@ async function resolveDisplayName() {
 
 export default function ProfileScreen({ navigation }) {
   const tutorial = useTutorial();
+  const profileStepShown = useRef(false); // show “Create Look” once
   useFocusEffect(
     useCallback(() => {
       tutorial?.onScreen?.('Profile');
-      tutorial?.startIfEnabled?.('Profile'); // kick off if queued from previous step
+      tutorial?.startIfEnabled?.('Profile');
+      if (!profileStepShown.current && tutorial?.isEnabled?.()) {
+        profileStepShown.current = true;
+        // Nudge: point to the Create Look button
+        setTimeout(() => {
+          tutorial.setNext?.({
+            anchorId: 'profile:createLook',
+            textKey: 'tutorial.createLook',
+            screen: 'Profile',
+            prefer: 'below',
+          });
+        }, 150);
+      }
     }, [tutorial])
   );
 
@@ -132,10 +145,7 @@ export default function ProfileScreen({ navigation }) {
 
       {/* Create look (tutorial anchor) */}
       <View style={{ paddingHorizontal: SIDE, marginBottom: 12 }}>
-        <CoachMark
-          id="profile:createLook" // ⬅️ matches the anchorId queued from AddItemDetails
-          text={t('tutorial.profileGoCreate', 'Now you can create your look!')}
-        >
+        <CoachMark id="profile:createLook">
           <TouchableOpacity
             onPress={() => navigation.navigate('CreateLook')}
             style={{ height: 44, borderRadius: 10, backgroundColor: '#1976D2', alignItems: 'center', justifyContent: 'center' }}
