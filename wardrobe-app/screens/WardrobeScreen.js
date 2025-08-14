@@ -12,6 +12,8 @@ import BottomNav, { BOTTOM_NAV_HEIGHT } from '../components/BottomNav';
 import axios from 'axios';
 import { API_BASE_URL } from '../api/config';
 import { useLanguage } from '../i18n/LanguageProvider';
+import { CoachMark, useTutorial } from '../tutorial/TutorialProvider';
+
 
 const api = axios.create({ baseURL: API_BASE_URL });
 
@@ -33,6 +35,12 @@ const TILE_W = Math.floor((SCREEN_W - PAGE_SIDE_PADDING * 2 - ROW_GAP) / COLS);
 
 
 export default function WardrobeScreen({ navigation }) {
+  const tutorial = useTutorial();
+  useFocusEffect(useCallback(() => {
+    tutorial.onScreen('Wardrobe');
+    tutorial.startIfEnabled('Wardrobe');
+  }, []));
+
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
 
@@ -115,7 +123,18 @@ export default function WardrobeScreen({ navigation }) {
   const afterInteractions = () =>
     new Promise(r => InteractionManager.runAfterInteractions(r));
 
-  const askTypeThenUpload = () => { setTypeSearch(''); setTypeModalOpen(true); };
+  const askTypeThenUpload = () => {
+    setTypeSearch('');
+    setTypeModalOpen(true);
+    // Nudge the tutorial to the next anchor (inside the modal)
+    setTimeout(() => {
+      tutorial.setNext({
+        anchorId: 'wardrobe:typePicker',
+        textKey: 'tutorial.pickType',   // uses your dictionary key
+        screen: 'Wardrobe',
+      });
+    }, 0);
+  };
 
   const doPickAndUpload = async (chosenType) => {
     if (!chosenType || isPicking || isUploading) return;
@@ -214,13 +233,15 @@ export default function WardrobeScreen({ navigation }) {
       {/* Top controls */}
       <View style={{ paddingTop: topInset, paddingHorizontal: PAGE_SIDE_PADDING }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-          <TouchableOpacity
-            onPress={askTypeThenUpload}
-            style={{ backgroundColor: '#1976D2', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8 }}
-            activeOpacity={0.9}
-          >
-            <Text style={{ color: '#fff', fontWeight: '600' }}>{t('wardrobe.addItem')}</Text>
-          </TouchableOpacity>
+          <CoachMark id="wardrobe:addItem">
+            <TouchableOpacity
+              onPress={askTypeThenUpload}
+              style={{ backgroundColor: '#1976D2', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8 }}
+              activeOpacity={0.9}
+            >
+              <Text style={{ color: '#fff', fontWeight: '600' }}>{t('wardrobe.addItem')}</Text>
+            </TouchableOpacity>
+          </CoachMark>
           <View style={{ flex: 1 }} />
           <TouchableOpacity
             onPress={() => setSearchModalOpen(true)}
@@ -336,16 +357,18 @@ export default function WardrobeScreen({ navigation }) {
               onChangeText={setTypeSearch}
               style={{ height: 36, borderWidth: 1, borderColor: '#ccc', borderRadius: 8, paddingHorizontal: 10, marginBottom: 10 }}
             />
-            <FlatList
-              data={MASTER_TYPES.filter(tp => tp.includes(typeSearch.trim().toLowerCase()))}
-              keyExtractor={(tp) => tp}
-              renderItem={({ item }) => (
-                <TouchableOpacity onPress={() => { setPendingType(item); setTypeModalOpen(false); }} style={{ paddingVertical: 10 }}>
-                  <Text style={{ fontSize: 16 }}>{typeLabel(item)}</Text>
-                </TouchableOpacity>
-              )}
-              ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: '#eee' }} />}
-            />
+            <CoachMark id="wardrobe:typePicker">
+              <FlatList
+                data={MASTER_TYPES.filter(tp => tp.includes(typeSearch.trim().toLowerCase()))}
+                keyExtractor={(tp) => tp}
+                renderItem={({ item }) => (
+                  <TouchableOpacity onPress={() => { setPendingType(item); setTypeModalOpen(false); }} style={{ paddingVertical: 10 }}>
+                    <Text style={{ fontSize: 16 }}>{typeLabel(item)}</Text>
+                  </TouchableOpacity>
+                )}
+                ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: '#eee' }} />}
+              />
+            </CoachMark>
             <View style={{ height: 8 }} />
             <Button title={t('common.close')} onPress={() => setTypeModalOpen(false)} />
           </View>

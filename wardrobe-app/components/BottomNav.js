@@ -4,6 +4,7 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '../i18n/LanguageProvider';
+import { CoachMark } from '../tutorial/TutorialProvider';
 
 export const BOTTOM_NAV_HEIGHT = 62;
 
@@ -88,23 +89,25 @@ export default function BottomNav({ navigation, active = 'wardrobe' }) {
       </View>
 
       {/* Profile */}
-      <TouchableOpacity onPress={() => go('profile')} style={{ alignItems: 'center' }} activeOpacity={0.8}>
-        <Ionicons
-          name="person-circle-outline"
-          size={24}
-          color={active === 'profile' ? '#1976D2' : '#666'}
-        />
-        <Text
-          style={{
-            marginTop: 4,
-            fontSize: 12,
-            color: active === 'profile' ? '#1976D2' : '#666',
-            fontWeight: active === 'profile' ? '600' : '400',
-          }}
-        >
-          {t('nav.profile')}
-        </Text>
-      </TouchableOpacity>
+      <CoachMark id="nav:profile">
+        <TouchableOpacity onPress={() => go('profile')} style={{ alignItems: 'center' }} activeOpacity={0.8}>
+          <Ionicons
+            name="person-circle-outline"
+            size={24}
+            color={active === 'profile' ? '#1976D2' : '#666'}
+          />
+          <Text
+            style={{
+             marginTop: 4,
+              fontSize: 12,
+              color: active === 'profile' ? '#1976D2' : '#666',
+              fontWeight: active === 'profile' ? '600' : '400',
+            }}
+          >
+            Profile
+          </Text>
+        </TouchableOpacity>
+     </CoachMark>
     </View>
   );
 }

@@ -1,5 +1,5 @@
-// screens/AddItemDetailsScreen.js  (aka AddItemScreen)
-import React, { useMemo, useState } from 'react';
+// screens/AddItemDetailsScreen.js
+import React, { useMemo, useState, useRef } from 'react';
 import {
   SafeAreaView, View, Text, ScrollView, Image, TouchableOpacity, Button,
   Alert, Platform, Dimensions
@@ -8,6 +8,8 @@ import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import { API_BASE_URL } from '../api/config';
 import { useLanguage } from '../i18n/LanguageProvider';
+import { useFocusEffect } from '@react-navigation/native';
+import { CoachMark, useTutorial } from '../tutorial/TutorialProvider';
 
 const api = axios.create({ baseURL: API_BASE_URL });
 
@@ -54,6 +56,8 @@ const toArray = (v) => Array.isArray(v) ? v : (v ? [v] : []);
 
 export default function AddItemScreen({ navigation, route }) {
   const { t } = useLanguage();
+  const tutorial = useTutorial();
+  const shownOnceRef = useRef(false); // make sure we only inject this step once
 
   const imageUrl    = route.params?.imageUrl;
   const initialType = (route.params?.initialType || 'tshirt').toLowerCase();
@@ -75,6 +79,28 @@ export default function AddItemScreen({ navigation, route }) {
   const [selected, setSelected] = useState(isEditing ? initialSelected : emptySel);
   const [heroUrl, setHeroUrl] = useState(imageUrl);
   const [extracting, setExtracting] = useState(false);
+
+  // Tell the tutorial which screen we're on and show the “choose tags” coach bubble.
+  useFocusEffect(
+    React.useCallback(() => {
+      tutorial?.onScreen?.('AddItemDetails');
+      // keep the main flow running if it was started
+      tutorial?.startIfEnabled?.('AddItemDetails');
+
+      // Inject the “choose tags” step as a bubble anchored to the first section (color)
+      if (!shownOnceRef.current && tutorial?.isEnabled?.()) {
+        shownOnceRef.current = true;
+        // a tiny delay lets the layout settle so the anchor is measured
+        setTimeout(() => {
+          tutorial.setNext?.({
+            anchorId: 'additem:tagSection',
+            textKey: 'tutorial.chooseTags',
+            screen: 'AddItemDetails',
+          });
+        }, 250);
+      }
+    }, [tutorial])
+  );
 
   const toggle = (cat, value, max = Infinity) => {
     setSelected((prev) => {
@@ -109,10 +135,9 @@ export default function AddItemScreen({ navigation, route }) {
       const newUrl = res.data?.imageUrl;
       if (!newUrl) throw new Error('No imageUrl returned from extractor');
       setHeroUrl(newUrl);
-      Alert.alert(t('addItem.extractUpdatedTitle', 'Extraction updated'), t('addItem.extractUpdatedBody', 'Preview replaced with the new extraction.'));
+      Alert.alert(t('addItem.extractUpdatedTitle'), t('addItem.extractUpdatedBody'));
     } catch (e) {
-      console.log('retryExtraction error:', e?.response?.data || e.message);
-      Alert.alert(t('addItem.extractFailedTitle', 'Extraction failed'), e?.response?.data?.message || e.message || t('common.tryAgain', 'Please try again.'));
+      Alert.alert(t('addItem.extractFailedTitle'), e?.response?.data?.message || e.message || t('common.tryAgain'));
     } finally {
       setExtracting(false);
     }
@@ -120,10 +145,7 @@ export default function AddItemScreen({ navigation, route }) {
 
   const onSave = async () => {
     if (!isValid) {
-      Alert.alert(
-        t('addItem.missingTitle', 'Missing info'),
-        t('addItem.missingBody', 'Please pick at least one tag in each section (features are optional).')
-      );
+      Alert.alert(t('addItem.missingTitle'), t('addItem.missingBody'));
       return;
     }
     try {
@@ -131,27 +153,30 @@ export default function AddItemScreen({ navigation, route }) {
       const token = await SecureStore.getItemAsync('token');
 
       if (isEditing) {
-        await api.put(
-          `/wardrobe/${itemId}`,
-          { item_type: initialType, tags: selected, image_url: heroUrl },
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+        await api.put(`/wardrobe/${itemId}`, { item_type: initialType, tags: selected, image_url: heroUrl }, { headers: { Authorization: `Bearer ${token}` } });
       } else {
-        await api.post(
-          '/wardrobe',
-          { image_url: heroUrl, item_type: initialType, tags: selected },
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+        await api.post('/wardrobe', { image_url: heroUrl, item_type: initialType, tags: selected }, { headers: { Authorization: `Bearer ${token}` } });
       }
 
       Alert.alert(
-        t('addItem.savedTitle', 'Saved!'),
-        isEditing ? t('addItem.savedEdit', 'Changes updated.') : t('addItem.savedAdd', 'Item added to your wardrobe.')
+        t('addItem.savedTitle'),
+        isEditing ? t('addItem.savedEdit') : t('addItem.savedAdd'),
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              if (tutorial?.isEnabled?.()) {
+                // continue the onboarding to Profile/CreateLook
+                navigation.navigate('Profile');
+              } else {
+                navigation.goBack();
+              }
+            }
+          }
+        ]
       );
-      navigation.goBack();
     } catch (e) {
-      console.log('save item error:', e?.response?.data || e.message);
-      Alert.alert(t('common.saveFailed', 'Failed to save'), e?.response?.data?.message || e.message || t('common.tryAgain', 'Please try again.'));
+      Alert.alert(t('common.saveFailed'), e?.response?.data?.message || e.message || t('common.tryAgain'));
     } finally {
       setSaving(false);
     }
@@ -159,13 +184,13 @@ export default function AddItemScreen({ navigation, route }) {
 
   // localized titles
   const TITLES = {
-    color:    t('tags.color.title', 'Color (pick up to 2)'),
-    season:   t('tags.season.title', 'Season'),
-    fit:      t('tags.fit.title', 'Fit & Style'),
-    occasion: t('tags.occasion.title', 'Occasion'),
-    material: t('tags.material.title', 'Material'),
-    pattern:  t('tags.pattern.title', 'Pattern'),
-    feature:  t('tags.feature.title', 'Special Features'),
+    color:    t('tags.color.title'),
+    season:   t('tags.season.title'),
+    fit:      t('tags.fit.title'),
+    occasion: t('tags.occasion.title'),
+    material: t('tags.material.title'),
+    pattern:  t('tags.pattern.title'),
+    feature:  t('tags.feature.title'),
   };
 
   return (
@@ -191,34 +216,36 @@ export default function AddItemScreen({ navigation, route }) {
               }}
             >
               <Text style={{ color: '#fff', fontWeight: '600' }}>
-                {extracting ? t('common.extracting', 'Extracting…') : t('addItem.tryExtract', 'Try extraction again')}
+                {extracting ? t('common.extracting') : t('addItem.tryExtract')}
               </Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {/* color swatches */}
-        <Section title={TITLES.color}>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-            {TAGS.color.map((c) => (
-              <TouchableOpacity
-                key={c}
-                onPress={() => toggle('color', c, 2)}
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 20,
-                  marginRight: 10,
-                  marginBottom: 10,
-                  backgroundColor: c,
-                  borderWidth: selected.color.includes(c) ? 3 : 1,
-                  borderColor: selected.color.includes(c) ? '#1976D2' : '#ccc',
-                }}
-                accessibilityLabel={t(`tags.color.${c}`, c)}
-              />
-            ))}
-          </View>
-        </Section>
+        {/* COLOR section — anchor the tutorial bubble here */}
+        <CoachMark id="additem:tagSection">
+          <Section title={TITLES.color}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+              {TAGS.color.map((c) => (
+                <TouchableOpacity
+                  key={c}
+                  onPress={() => toggle('color', c, 2)}
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 20,
+                    marginRight: 10,
+                    marginBottom: 10,
+                    backgroundColor: c,
+                    borderWidth: selected.color.includes(c) ? 3 : 1,
+                    borderColor: selected.color.includes(c) ? '#1976D2' : '#ccc',
+                  }}
+                  accessibilityLabel={t(`tags.color.${c}`, c)}
+                />
+              ))}
+            </View>
+          </Section>
+        </CoachMark>
 
         {(['season','fit','occasion','material','pattern','feature']).map((cat) => (
           <Section key={cat} title={TITLES[cat]}>
@@ -236,48 +263,14 @@ export default function AddItemScreen({ navigation, route }) {
         ))}
 
         <View style={{ height: 16 }} />
-        <Button
-          title={saving ? t('common.saving', 'Saving…') : (isEditing ? t('addItem.saveChanges', 'Save changes') : t('addItem.saveItem', 'Save item'))}
-          onPress={onSave}
-          disabled={saving}
-        />
-
-        {isEditing && (
-          <>
-            <View style={{ height: 16 }} />
-            <Button
-              title={t('addItem.delete', 'Delete item')}
-              color="red"
-              onPress={() => {
-                Alert.alert(
-                  t('addItem.deleteTitle', 'Delete Item'),
-                  t('addItem.deleteConfirm', 'Are you sure you want to delete this item?'),
-                  [
-                    { text: t('common.cancel', 'Cancel'), style: 'cancel' },
-                    {
-                      text: t('common.delete', 'Delete'),
-                      style: 'destructive',
-                      onPress: async () => {
-                        try {
-                          const token = await SecureStore.getItemAsync('token');
-                          await api.delete(`/wardrobe/${itemId}`, {
-                            headers: { Authorization: `Bearer ${token}` },
-                          });
-                          Alert.alert(t('addItem.deleted', 'Deleted'), t('addItem.deletedBody', 'Item removed from your wardrobe.'));
-                          navigation.goBack();
-                        } catch (e) {
-                          console.log('delete item error:', e?.response?.data || e.message);
-                          Alert.alert(t('addItem.deleteFailed', 'Failed to delete'), e?.response?.data?.message || e.message || t('common.tryAgain', 'Please try again.'));
-                        }
-                      },
-                    },
-                  ]
-                );
-              }}
-            />
-          </>
-        )}
-        <View style={{ height: 24 }} />
+        {/* Optional: anchor for a future “tap Save” coach step */}
+        <CoachMark id="additem:save">
+          <Button
+            title={saving ? t('common.saving') : (isEditing ? t('addItem.saveChanges') : t('addItem.saveItem'))}
+            onPress={onSave}
+            disabled={saving}
+          />
+        </CoachMark>
       </ScrollView>
     </SafeAreaView>
   );

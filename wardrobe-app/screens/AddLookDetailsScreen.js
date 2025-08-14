@@ -1,10 +1,23 @@
 // screens/AddLookDetailsScreen.js
-import React, { useMemo, useState } from 'react';
-import { SafeAreaView, View, Text, ScrollView, Image, TouchableOpacity, Button, Alert, Dimensions, Platform } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  SafeAreaView,
+  View,
+  Text,
+  ScrollView,
+  Image,
+  TouchableOpacity,
+  Button,
+  Alert,
+  Dimensions,
+  Platform,
+} from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import { API_BASE_URL } from '../api/config';
 import { useLanguage } from '../i18n/LanguageProvider';
+import { useTutorial } from '../tutorial/TutorialProvider';
 
 const api = axios.create({ baseURL: API_BASE_URL });
 
@@ -30,16 +43,36 @@ const Chip = ({ active, label, onPress }) => (
 
 export default function AddLookDetailsScreen({ navigation, route }) {
   const { t } = useLanguage();
+  const tutorial = useTutorial();
 
   const baseUrl = route.params?.baseUrl;      // base photo we’ll save for this look
   const itemIds = route.params?.itemIds || [];
 
-  // i18n-driven tag sets (fallback to English keys if not provided)
+  // i18n-driven tag sets
   const SEASONS   = ['spring','summer','autumn','winter','all-season'];
   const OCCASIONS = ['casual','work','formal','sport','streetwear','beach','loungewear'];
 
   const [saving, setSaving] = useState(false);
   const [selected, setSelected] = useState({ season: [], occasion: [] });
+
+  // mark screen in tutorial & show the explanatory popup once
+  const promptedRef = useRef(false);
+  useFocusEffect(
+    React.useCallback(() => {
+      tutorial?.onScreen?.('AddLookDetails');
+      tutorial?.startIfEnabled?.('AddLookDetails');
+      // Show the “Nice! here is your look!” popup only once per mount
+      if (!promptedRef.current && tutorial?.isEnabled?.()) {
+        promptedRef.current = true;
+        setTimeout(() => {
+          Alert.alert(
+            t('tutorial.lookReadyTitle'),
+            t('tutorial.lookReadyBody')
+          );
+        }, 250);
+      }
+    }, [tutorial, t])
+  );
 
   const toggle = (cat, value) => {
     setSelected((prev) => {
@@ -70,8 +103,33 @@ export default function AddLookDetailsScreen({ navigation, route }) {
         { image_url: baseUrl, items_used: itemIds, tags: selected },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      Alert.alert(t('addLook.saved', 'Look saved!'));
-      navigation.navigate('Profile');
+
+      // Success — tutorial completion popup + turn tutorial off
+      Alert.alert(
+        t('tutorial.finishTitle'),
+        t('tutorial.finishBody'),
+        [
+          {
+            text: 'OK',
+            onPress: async () => {
+              // Turn off tutorial locally (provider) and remotely (settings)
+              try {
+                tutorial?.complete?.(); // or tutorial?.disable?.() depending on your provider
+                if (token) {
+                  await api.put(
+                    '/settings/tutorial',
+                    { enabled: false },
+                    { headers: { Authorization: `Bearer ${token}` } }
+                  );
+                }
+              } catch {
+                // non-fatal if network fails
+              }
+              navigation.navigate('Profile');
+            },
+          },
+        ]
+      );
     } catch (e) {
       Alert.alert(
         t('common.saveFailed', 'Failed to save'),

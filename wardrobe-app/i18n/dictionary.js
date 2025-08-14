@@ -25,6 +25,9 @@ export default {
       no: 'No',
       on: 'On',
       off: 'Off',
+      ok: 'OK',
+      next: 'Next',
+      skip: 'Skip',
     },
     wardrobe: {
       addItem: 'Add Item',
@@ -180,6 +183,23 @@ export default {
       passwordChanged: 'Password changed.',
       passwordMissing: 'Enter new password and confirm it.',
     },
+    tutorial: {
+      choosePhoto: 'Choose a photo of yourself wearing the desired clothing item.',
+      choosePhotoText: 'Choose a photo of yourself wearing the desired clothing item.',
+      addTagsTitle: 'Tag this item',
+      chooseTags: 'Now choose the related tags for this clothing item. You can also try extraction again.',
+      gotoProfile: 'Go to your profile to create your first look!',
+      createLook: 'Now you can create your look!',
+      addMyPhoto: 'Add your photo and I will put the clothes on you!',
+      chooseBase: 'Select your base photo.',
+      pickType: 'Pick a clothing type to add.',
+      pickItem: 'Choose the specific item from your wardrobe.',
+      continue: 'When ready, tap Continue.',
+      whenWhere: 'Nice! Here’s your look! Now choose when and where you want to wear it.',
+      finished: 'Good job! You’re ready to add more clothes to your virtual wardrobe and create more looks!',
+      tapAnywhere: 'Tap anywhere to continue'
+    }
+
   },
 
   // ---- Russian ----
@@ -209,6 +229,9 @@ export default {
       no: 'Нет',
       on: 'Вкл.',
       off: 'Выкл.',
+      ok: 'ОК',
+      next: 'Далее',
+      skip: 'Пропустить',
     },
     wardrobe: {
       addItem: 'Добавить вещь',
@@ -364,6 +387,22 @@ export default {
       passwordChanged: 'Пароль изменён.',
       passwordMissing: 'Введите новый пароль и подтвердите его.',
     },
+    tutorial: {
+      choosePhoto: 'Выберите своё фото в желаемой одежде.',
+      choosePhotoText: 'Выберите своё фото в желаемой одежде.',
+      addTagsTitle: 'Добавьте теги',
+      chooseTags: 'Теперь выберите подходящие теги для этой вещи. Можно повторить извлечение.',
+      gotoProfile: 'Перейдите в профиль, чтобы создать первый образ!',
+      createLook: 'Теперь можно создать образ!',
+      addMyPhoto: 'Добавьте своё фото, и я надену на вас одежду!',
+      chooseBase: 'Выберите базовое фото.',
+      pickType: 'Выберите тип одежды для добавления.',
+      pickItem: 'Выберите конкретную вещь из гардероба.',
+      continue: 'Готовы? Нажмите «Продолжить».',
+      whenWhere: 'Отлично! Вот ваш образ. Теперь укажите, когда и где вы его наденете.',
+      finished: 'Отличная работа! Добавляйте новые вещи и создавайте больше образов!',
+      tapAnywhere: 'Нажмите в любом месте, чтобы продолжить'
+    }
   },
 
   de: {
@@ -392,6 +431,9 @@ export default {
       no: 'Nein',
       on: 'An',
       off: 'Aus',
+      ok: 'OK',
+      next: 'Weiter',
+      skip: 'Überspringen',
     },
     wardrobe: {
       addItem: 'Artikel hinzufügen',
@@ -547,6 +589,22 @@ export default {
       passwordChanged: 'Passwort geändert.',
       passwordMissing: 'Geben Sie ein neues Passwort ein und bestätigen Sie es.',
     },
+    tutorial: {
+      choosePhoto: 'Wähle ein Foto von dir mit dem gewünschten Kleidungsstück.',
+      choosePhotoText: 'Wähle ein Foto von dir mit dem gewünschten Kleidungsstück.',
+      addTagsTitle: 'Artikel taggen',
+      chooseTags: 'Wähle passende Tags für dieses Kleidungsstück. Du kannst die Extraktion erneut versuchen.',
+      gotoProfile: 'Gehe zu deinem Profil, um deinen ersten Look zu erstellen!',
+      createLook: 'Jetzt kannst du deinen Look erstellen!',
+      addMyPhoto: 'Füge dein Foto hinzu und ich ziehe dir die Kleidung an!',
+      chooseBase: 'Wähle dein Basisfoto.',
+      pickType: 'Wähle einen Kleidungstyp zum Hinzufügen.',
+      pickItem: 'Wähle das konkrete Teil aus deinem Kleiderschrank.',
+      continue: 'Wenn fertig, tippe auf „Weiter“.',
+      whenWhere: 'Top! Hier ist dein Look. Wähle nun, wann und wo du ihn tragen möchtest.',
+      finished: 'Gut gemacht! Du bist bereit, mehr Kleidung hinzuzufügen und weitere Looks zu erstellen!',
+      tapAnywhere: 'Zum Fortfahren irgendwo tippen'
+    }
   },
 
   fr: {
@@ -575,6 +633,9 @@ export default {
       no: 'Non',
       on: 'Activé',
       off: 'Désactivé',
+      ok: 'OK',
+      next: 'Suivant',
+      skip: 'Ignorer',
     },
     wardrobe: {
       addItem: 'Ajouter un article',
@@ -730,6 +791,22 @@ export default {
       passwordChanged: 'Mot de passe changé.',
       passwordMissing: 'Entrez un nouveau mot de passe et confirmez‑le.',
     },
+    tutorial: {
+      choosePhoto: 'Choisissez une photo de vous portant le vêtement souhaité.',
+      choosePhotoText: 'Choisissez une photo de vous portant le vêtement souhaité.',
+      addTagsTitle: 'Taguez cet article',
+      chooseTags: 'Choisissez les tags correspondants pour ce vêtement. Vous pouvez relancer l’extraction.',
+      gotoProfile: 'Allez dans votre profil pour créer votre premier look !',
+      createLook: 'Vous pouvez maintenant créer votre look !',
+      addMyPhoto: 'Ajoutez votre photo et j’y poserai les vêtements !',
+      chooseBase: 'Sélectionnez votre photo de base.',
+      pickType: 'Choisissez un type de vêtement à ajouter.',
+      pickItem: 'Choisissez l’article précis dans votre garde‑robe.',
+      continue: 'Quand vous êtes prêt, touchez « Continuer ».',
+      whenWhere: 'Super ! Voici votre look. Choisissez maintenant quand et où vous voulez le porter.',
+      finished: 'Bravo ! Vous pouvez ajouter d’autres vêtements et créer encore plus de looks !',
+      tapAnywhere: 'Touchez n’importe où pour continuer'
+    }
   },
 
   es: {
@@ -758,6 +835,9 @@ export default {
       no: 'No',
       on: 'Activado',
       off: 'Desactivado',
+      ok: 'OK',
+      next: 'Siguiente',
+      skip: 'Omitir',
     },
     wardrobe: {
       addItem: 'Añadir prenda',
@@ -913,5 +993,21 @@ export default {
       passwordChanged: 'Contraseña cambiada.',
       passwordMissing: 'Introduce una nueva contraseña y confírmala.',
     },
+    tutorial: {
+      choosePhoto: 'Elige una foto tuya llevando la prenda deseada.',
+      choosePhotoText: 'Elige una foto tuya llevando la prenda deseada.',
+      addTagsTitle: 'Etiqueta esta prenda',
+      chooseTags: 'Ahora elige las etiquetas relacionadas para esta prenda. También puedes intentar la extracción otra vez.',
+      gotoProfile: '¡Ve a tu perfil para crear tu primer look!',
+      createLook: '¡Ahora puedes crear tu look!',
+      addMyPhoto: 'Añade tu foto y pondré la ropa sobre ti.',
+      chooseBase: 'Selecciona tu foto base.',
+      pickType: 'Elige un tipo de prenda para añadir.',
+      pickItem: 'Elige el artículo concreto de tu armario.',
+      continue: 'Cuando estés listo, pulsa «Continuar».',
+      whenWhere: '¡Genial! Aquí está tu look. Ahora elige cuándo y dónde quieres llevarlo.',
+      finished: '¡Buen trabajo! Ya puedes añadir más prendas a tu armario virtual y crear más looks.',
+      tapAnywhere: 'Toca en cualquier parte para continuar'
+    }
   },
 };

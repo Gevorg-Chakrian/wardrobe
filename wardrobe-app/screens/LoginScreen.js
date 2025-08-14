@@ -23,7 +23,6 @@ const LoginScreen = ({ navigation }) => {
       await SecureStore.setItemAsync('token', token);
 
       console.log('Logged in:', user);
-      Alert.alert('Login Successful');
 
       // Reset stack so user can’t go “back” to Login
       navigation.reset({

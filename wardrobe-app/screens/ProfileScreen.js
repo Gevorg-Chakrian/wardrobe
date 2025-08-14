@@ -8,6 +8,8 @@ import { API_BASE_URL } from '../api/config';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomNav from '../components/BottomNav';
 import { useLanguage } from '../i18n/LanguageProvider';
+import { CoachMark, useTutorial } from '../tutorial/TutorialProvider';
+import { useFocusEffect } from '@react-navigation/native'; // ⬅️ missing import added
 
 const api = axios.create({ baseURL: API_BASE_URL });
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -64,6 +66,14 @@ async function resolveDisplayName() {
 /** ------------------------------------------------------------- */
 
 export default function ProfileScreen({ navigation }) {
+  const tutorial = useTutorial();
+  useFocusEffect(
+    useCallback(() => {
+      tutorial?.onScreen?.('Profile');
+      tutorial?.startIfEnabled?.('Profile'); // kick off if queued from previous step
+    }, [tutorial])
+  );
+
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
 
@@ -120,15 +130,20 @@ export default function ProfileScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      {/* Create look */}
+      {/* Create look (tutorial anchor) */}
       <View style={{ paddingHorizontal: SIDE, marginBottom: 12 }}>
-        <TouchableOpacity
-          onPress={() => navigation.navigate('CreateLook')}
-          style={{ height: 44, borderRadius: 10, backgroundColor: '#1976D2', alignItems: 'center', justifyContent: 'center' }}
-          activeOpacity={0.9}
+        <CoachMark
+          id="profile:createLook" // ⬅️ matches the anchorId queued from AddItemDetails
+          text={t('tutorial.profileGoCreate', 'Now you can create your look!')}
         >
-          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>{t('profile.createLook')}</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('CreateLook')}
+            style={{ height: 44, borderRadius: 10, backgroundColor: '#1976D2', alignItems: 'center', justifyContent: 'center' }}
+            activeOpacity={0.9}
+          >
+            <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>{t('profile.createLook')}</Text>
+          </TouchableOpacity>
+        </CoachMark>
       </View>
 
       <FlatList
