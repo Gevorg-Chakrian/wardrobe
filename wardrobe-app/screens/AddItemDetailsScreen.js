@@ -87,32 +87,6 @@ export default function AddItemScreen({ navigation, route }) {
     React.useCallback(() => {
       tutorial?.onScreen?.('AddItemDetails');
       tutorial?.startIfEnabled?.();
-
-      const schedule = (delay) =>
-        setTimeout(() => {
-          if (tutorial?.isEnabled?.()) {
-            requestedRef.current = true;
-            tutorial.setNext?.({
-              anchorId: 'additem:colors',
-              textKey: 'tutorial.chooseTags',
-              screen: 'AddItemDetails',
-              prefer: 'above',
-            });
-          }
-        }, delay);
-
-      // first attempt after layout settles
-      if (!requestedRef.current) schedule(600);
-
-      // fallback retry (if anchor wasn’t ready the first time)
-      const retry = setTimeout(() => {
-        if (!retriedRef.current) {
-          retriedRef.current = true;
-          schedule(1200);
-        }
-      }, 800);
-
-      return () => clearTimeout(retry);
     }, [tutorial])
   );
 

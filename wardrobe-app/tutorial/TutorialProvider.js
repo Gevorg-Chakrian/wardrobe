@@ -38,7 +38,7 @@ export function TutorialProvider({ children }) {
     { id: 'wardrobe:type', screen: 'Wardrobe', anchorId: 'wardrobe:typePicker', textKey: 'tutorial.pickType', prefer: 'above' },
 
     // Step 3: AddItemDetails → colors section (above)
-    { id: 'additem:colors', screen: 'AddItemDetails', anchorId: 'additem:tagSection', textKey: 'tutorial.chooseTags', prefer: 'above' },
+    { id: 'additem:colors', screen: 'AddItemDetails', anchorId: 'additem:colors', textKey: 'tutorial.chooseTags', prefer: 'above' },
 
     // Step 4: Wardrobe → bottom Profile tab (above)
     { id: 'wardrobe:profile', screen: 'Wardrobe', anchorId: 'nav:profile', textKey: 'tutorial.gotoProfile', prefer: 'above' },
