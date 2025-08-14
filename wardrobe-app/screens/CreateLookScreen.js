@@ -1,15 +1,8 @@
 // screens/CreateLookScreen.js
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  SafeAreaView,
-  View,
-  Text,
-  ScrollView,
-  Image,
-  TouchableOpacity,
-  Button,
-  Alert,
-  Platform
+  SafeAreaView, View, Text, ScrollView, Image,
+  TouchableOpacity, Alert, Platform, InteractionManager
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
@@ -24,6 +17,12 @@ const api = axios.create({ baseURL: API_BASE_URL });
 
 export default function CreateLookScreen({ navigation }) {
   const tutorial = useTutorial();
+
+  // guards/flags for tutorial timing
+  const step5ShownRef = useRef(false);          // show "Add my photo" once
+  const uploadJustHappenedRef = useRef(false);  // set right after upload
+  const lastUploadedBaseUrlRef = useRef(null);  // to auto-select the newly uploaded base
+
   useFocusEffect(
     useCallback(() => {
       tutorial.onScreen('CreateLook');
@@ -36,9 +35,8 @@ export default function CreateLookScreen({ navigation }) {
 
   const typeLabel = (key) => {
     const k = String(key).toLowerCase();
-    const localized = t(`types.${k}`);
-    if (localized && localized !== `types.${k}`) return localized;
-    return k.charAt(0).toUpperCase() + k.slice(1);
+    const loc = t(`types.${k}`);
+    return loc && loc !== `types.${k}` ? loc : k.charAt(0).toUpperCase() + k.slice(1);
   };
 
   const [basePhotos, setBasePhotos] = useState([]);
@@ -56,15 +54,34 @@ export default function CreateLookScreen({ navigation }) {
       const token = await getToken();
       const res = await api.get('/wardrobe', { headers: { Authorization: `Bearer ${token}` } });
       const all = res.data?.items || res.data || [];
-      setBasePhotos(all.filter(it => (it.item_type || it.itemType) === 'profile'));
+
+      const bases = all.filter(it => (it.item_type || it.itemType) === 'profile');
       const clothes = all.filter(it => (it.item_type || it.itemType) !== 'profile');
+
+      setBasePhotos(bases);
+
+      // Prefer auto-selecting the just-added base; otherwise keep current; otherwise first
+      if (bases.length > 0) {
+        if (lastUploadedBaseUrlRef.current) {
+          const m = bases.find(b => (b.image_url || b.imageUrl || b.url) === lastUploadedBaseUrlRef.current);
+          if (m) setSelectedBase({ id: m.id, url: m.image_url || m.imageUrl || m.url });
+          lastUploadedBaseUrlRef.current = null;
+        } else {
+          setSelectedBase(prev => {
+            if (prev && bases.some(b => b.id === prev.id)) return prev;
+            const b0 = bases[0];
+            return { id: b0.id, url: b0.image_url || b0.imageUrl || b0.url };
+          });
+        }
+      }
+
       const grouped = {};
-      for (const item of clothes) {
-        const tpe = (item.item_type || item.itemType || 'unknown').toLowerCase();
-        (grouped[tpe] ||= []).push(item);
+      for (const it of clothes) {
+        const tpe = (it.item_type || it.itemType || 'unknown').toLowerCase();
+        (grouped[tpe] ||= []).push(it);
       }
       setClothesByType(grouped);
-    } catch (e) {
+    } catch {
       Alert.alert(t('common.error'), t('createLook.loadWardrobeError'));
     } finally {
       setLoading(false);
@@ -72,6 +89,56 @@ export default function CreateLookScreen({ navigation }) {
   }, [t]);
 
   useFocusEffect(useCallback(() => { fetchWardrobe(); }, [fetchWardrobe]));
+
+  /** STEP 5: show “Add my photo” bubble if there are no base photos yet */
+  useEffect(() => {
+    if (!tutorial?.isEnabled?.()) return;
+    if (step5ShownRef.current) return;
+    if (basePhotos.length > 0) return;
+
+    InteractionManager.runAfterInteractions(() => {
+      setTimeout(() => {
+        tutorial.onScreen('CreateLook');
+        tutorial.setNext?.({
+          anchorId: 'create:addPhoto',
+          textKey: 'tutorial.addMyPhoto',
+          screen: 'CreateLook',
+          prefer: 'below', // bubble under button, arrow up to it
+        });
+        step5ShownRef.current = true;
+      }, 120);
+    });
+  }, [basePhotos.length, tutorial]);
+
+  /**
+   * After uploading a base photo and reloading data:
+   *  - expand the first clothes type (so create:item anchor exists)
+   *  - wait for layout to complete (interactions + 2×RAF)
+   *  - queue steps 6–8 in order via queueFront
+   */
+  useEffect(() => {
+    if (!uploadJustHappenedRef.current) return;
+    if (basePhotos.length === 0) return;
+
+    // Expand the first clothes section so the 'create:item' CoachMark exists/measures
+    const typeKeys = Object.keys(clothesByType).sort();
+    if (typeKeys.length > 0) setExpandedType(typeKeys[0]);
+
+    const queueTrio = () => {
+      tutorial.queueFront?.([
+        { screen: 'CreateLook', anchorId: 'create:base',     textKey: 'tutorial.chooseBase', prefer: 'above' },
+        { screen: 'CreateLook', anchorId: 'create:item',     textKey: 'tutorial.pickItem',   prefer: 'below' },
+        { screen: 'CreateLook', anchorId: 'create:continue', textKey: 'tutorial.continue',   prefer: 'above' },
+      ]);
+      uploadJustHappenedRef.current = false;
+    };
+
+    InteractionManager.runAfterInteractions(() => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(queueTrio);
+      });
+    });
+  }, [basePhotos.length, clothesByType, tutorial]);
 
   const addProfilePhoto = async () => {
     try {
@@ -104,12 +171,10 @@ export default function CreateLookScreen({ navigation }) {
       await api.post('/wardrobe', { image_url: imageUrl, item_type: 'profile' },
         { headers: { Authorization: `Bearer ${token}` } });
 
+      // mark that we just uploaded, remember URL for auto-select, then reload
+      lastUploadedBaseUrlRef.current = imageUrl;
+      uploadJustHappenedRef.current = true;
       await fetchWardrobe();
-      setSelectedBase({ id: `temp-${Date.now()}`, url: imageUrl });
-
-      if (typeof tutorial?.next === 'function') {
-        tutorial.next('create:addPhoto');
-      }
     } catch (e) {
       Alert.alert(t('common.uploadFailed'), e?.response?.data?.message || e.message || t('common.tryAgain'));
     }
@@ -170,11 +235,13 @@ export default function CreateLookScreen({ navigation }) {
             />
           )}
         </TouchableOpacity>
+
         {expanded && (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8, gap: 8 }}>
             {items.map((item, idx) => {
               const uri = item.image_url || item.imageUrl || item.url;
               const picked = isPicked(type, item.id);
+
               const Tile = (
                 <TouchableOpacity
                   key={item.id}
@@ -193,6 +260,8 @@ export default function CreateLookScreen({ navigation }) {
                   <Image source={{ uri }} style={{ width: '100%', height: '100%' }} />
                 </TouchableOpacity>
               );
+
+              // Wrap the first tile so the 'create:item' anchor is guaranteed
               return idx === 0 ? (
                 <CoachMark id="create:item" key={item.id}>
                   {Tile}
@@ -208,13 +277,28 @@ export default function CreateLookScreen({ navigation }) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff', paddingTop: insets.top + 20 }}>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+        {/* Header + Add my photo (Step 5 anchor) */}
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
           <Text style={{ fontSize: 20, fontWeight: '800', flex: 1 }}>{t('createLook.chooseBase')}</Text>
           <CoachMark id="create:addPhoto">
-            <Button title={t('createLook.addMyPhoto')} onPress={addProfilePhoto} />
+            <TouchableOpacity
+              onPress={addProfilePhoto}
+              activeOpacity={0.9}
+              style={{
+                paddingHorizontal: 14,
+                paddingVertical: Platform.OS === 'ios' ? 10 : 8,
+                borderRadius: 8,
+                backgroundColor: '#1976D2'
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '600' }}>
+                {t('createLook.addMyPhoto')}
+              </Text>
+            </TouchableOpacity>
           </CoachMark>
         </View>
 
+        {/* Base scroller (Step 6 anchor) */}
         <CoachMark id="create:base">
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
             {basePhotos.length === 0 ? (
@@ -259,6 +343,7 @@ export default function CreateLookScreen({ navigation }) {
           </ScrollView>
         </CoachMark>
 
+        {/* Clothes header (kept for context; tutorial points to first item instead) */}
         <CoachMark id="create:type">
           <Text style={{ fontSize: 20, fontWeight: '800', marginBottom: 10 }}>{t('createLook.pickClothes')}</Text>
         </CoachMark>
@@ -267,10 +352,10 @@ export default function CreateLookScreen({ navigation }) {
           <Section key={type} type={type} items={clothesByType[type]} />
         ))}
 
+        {/* Continue (Step 8 anchor) */}
         <CoachMark id="create:continue">
           <View style={{ marginTop: 20 }}>
-            <Button
-              title={t('common.continue')}
+            <TouchableOpacity
               onPress={() => {
                 if (!selectedBase) return Alert.alert(t('createLook.pickBaseFirst'));
                 const pickedIds = Object.values(pickedByType).filter(Boolean);
@@ -280,8 +365,20 @@ export default function CreateLookScreen({ navigation }) {
                   itemIds: pickedIds,
                 });
               }}
+              activeOpacity={0.9}
+              style={{
+                height: 44,
+                borderRadius: 10,
+                backgroundColor: '#1976D2',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
               disabled={loading}
-            />
+            >
+              <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>
+                {t('common.continue')}
+              </Text>
+            </TouchableOpacity>
           </View>
         </CoachMark>
       </ScrollView>
