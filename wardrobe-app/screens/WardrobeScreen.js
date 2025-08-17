@@ -1,8 +1,8 @@
 // screens/WardrobeScreen.js
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import {
-  SafeAreaView, StatusBar, View, Text, FlatList, Image, Button, Alert, ActivityIndicator,
-  Platform, Modal, TouchableOpacity, TextInput, ScrollView, InteractionManager, Dimensions
+  SafeAreaView, StatusBar, View, Text, FlatList, Image, Button, Alert, ActivityIndicator, Pressable,
+  Platform, Modal, TouchableOpacity, TextInput, ScrollView, InteractionManager, Dimensions, PanResponder
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,18 +25,20 @@ const MASTER_TYPES = [
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const PAGE_SIDE_PADDING = 12;
-const PAGE_W = SCREEN_W;
 const COLS = 2;
 const ROW_GAP = 12;
-
 const TILE_W = Math.floor((SCREEN_W - PAGE_SIDE_PADDING * 2 - ROW_GAP) / COLS);
+
+// swipe thresholds
+const SWIPE_DX = 40;
+const SWIPE_VX = 0.35;
 
 export default function WardrobeScreen({ navigation }) {
   const tutorial = useTutorial();
   useFocusEffect(useCallback(() => {
     tutorial.onScreen('Wardrobe');
     tutorial.startIfEnabled();
-  }, [])); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])); // eslint-disable-line
 
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
@@ -62,8 +64,16 @@ export default function WardrobeScreen({ navigation }) {
   const [isPicking, setIsPicking] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
-  const pagesRef = useRef(null);
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [activeIndex, _setActiveIndex] = useState(0);
+  const activeIndexRef = useRef(0);
+  const setActiveIndex = (updater) => {
+    // functional form to avoid stale state bugs
+    _setActiveIndex((curr) => {
+      const next = typeof updater === 'function' ? updater(curr) : updater;
+      activeIndexRef.current = next;
+      return next;
+    });
+  };
 
   const getToken = async () => SecureStore.getItemAsync('token');
 
@@ -98,29 +108,38 @@ export default function WardrobeScreen({ navigation }) {
   const typeList = useMemo(() => Object.keys(grouped).sort(), [grouped]);
   const pages = useMemo(() => ['all', ...typeList], [typeList]);
 
-  const scrollToIndex = (index) => {
-    if (!pagesRef.current) return;
-    setActiveIndex(index);
-    pagesRef.current.scrollToIndex({ index, animated: true });
-  };
+  // Clamp activeIndex if pages length changes
+  useEffect(() => {
+    setActiveIndex((curr) => Math.max(0, Math.min(curr, Math.max(0, pages.length - 1))));
+  }, [pages.length]);
+
+  const goToIndex = useCallback((nextIndex) => {
+    setActiveIndex((curr) => {
+      const max = Math.max(0, pages.length - 1);
+      const clamped = Math.max(0, Math.min(nextIndex, max));
+      if (clamped === curr) return curr; // no-op
+      return clamped;
+    });
+  }, [pages.length]);
 
   const goToType = (type) => {
-    const idx = pages.findIndex((tpe) => tpe.toLowerCase() === type.toLowerCase());
-    if (idx >= 0) scrollToIndex(idx);
+    const idx = pages.findIndex((tpe) => tpe.toLowerCase() === String(type).toLowerCase());
+    if (idx >= 0) goToIndex(idx);
   };
 
+  // search → jump to page
   useEffect(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return;
     const exact = pages.find((tpe) => tpe.toLowerCase() === q);
     const partial = pages.find((tpe) => tpe.toLowerCase().includes(q));
     goToType(exact || partial || 'all');
-  }, [searchQuery, pages]);
+  }, [searchQuery, pages, goToType]);
 
   const afterInteractions = () =>
     new Promise(r => InteractionManager.runAfterInteractions(r));
 
-  // Open the modal only (do not schedule the tutorial here; do it on onShow)
+  // Open the modal only (do not schedule the tutorial here; do it onShow)
   const askTypeThenUpload = () => {
     setTypeSearch('');
     setTypeModalOpen(true);
@@ -210,13 +229,34 @@ export default function WardrobeScreen({ navigation }) {
     </TouchableOpacity>
   );
 
-  const getPageLayout = (_, index) => ({
-    length: PAGE_W,
-    offset: PAGE_W * index,
-    index,
-  });
+  // PanResponder that always reads the latest index and goToIndex
+  const pan = React.useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onStartShouldSetPanResponderCapture: () => false,
+    onMoveShouldSetPanResponder: (_e, g) => {
+      const ax = Math.abs(g.dx), ay = Math.abs(g.dy);
+      return ax > 12 && ax > ay * 1.2;
+    },
+    onMoveShouldSetPanResponderCapture: (_e, g) => {
+      const ax = Math.abs(g.dx), ay = Math.abs(g.dy);
+      return ax > 12 && ax > ay * 1.2;
+    },
+    onPanResponderTerminationRequest: () => false,
+    onPanResponderRelease: (_e, g) => {
+      const idx = activeIndexRef.current; // <- always current
+      if (g.dx <= -SWIPE_DX || g.vx <= -SWIPE_VX) {
+        goToIndex(idx + 1);
+      } else if (g.dx >= SWIPE_DX || g.vx >= SWIPE_VX) {
+        goToIndex(idx - 1);
+      }
+    },
+  }), [goToIndex]);
 
   const topInset = (Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0) + 18;
+
+  // derive data once from activeIndex
+  const activeKey = pages[activeIndex] || 'all';
+  const dataForActive = activeKey === 'all' ? items : (grouped[activeKey] || []);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
@@ -244,11 +284,15 @@ export default function WardrobeScreen({ navigation }) {
         </View>
 
         {/* Tabs */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 6 }}>
-          {(['all', ...typeList]).map((tpe, i) => {
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 6 }}
+        >
+          {pages.map((tpe, i) => {
             const active = i === activeIndex;
             return (
-              <TouchableOpacity key={tpe} onPress={() => scrollToIndex(i)} style={{ marginRight: 18, alignItems: 'center' }}>
+              <TouchableOpacity key={tpe} onPress={() => goToIndex(i)} style={{ marginRight: 18, alignItems: 'center' }}>
                 <Text style={{ fontSize: 16, fontWeight: active ? '700' : '600', color: active ? '#000' : '#666' }}>
                   {tpe === 'all' ? t('wardrobe.all') : typeLabel(tpe)}
                 </Text>
@@ -259,77 +303,60 @@ export default function WardrobeScreen({ navigation }) {
         </ScrollView>
       </View>
 
-      {/* Carousel pages */}
-      <View style={{ flex: 1 }}>
+      {/* Content (single list that changes with activeIndex) + swipe layer */}
+      <View style={{ flex: 1 }} {...pan.panHandlers}>
         {loading ? (
           <View style={{ flex: 1, justifyContent: 'center' }}><ActivityIndicator /></View>
         ) : (
-          <FlatList
-            ref={pagesRef}
-            data={['all', ...typeList]}
-            keyExtractor={(tpe) => tpe}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            getItemLayout={getPageLayout}
-            onMomentumScrollEnd={(e) => {
-              const index = Math.round(e.nativeEvent.contentOffset.x / PAGE_W);
-              setActiveIndex(index);
-            }}
-            renderItem={({ item: pageKey }) => {
-              const title = pageKey === 'all' ? t('wardrobe.all') : typeLabel(pageKey);
-              const data = pageKey === 'all' ? items : (grouped[pageKey] || []);
-              return (
-                <View style={{ width: PAGE_W, paddingHorizontal: PAGE_SIDE_PADDING }}>
-                  <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 10 }}>{title}</Text>
-                  <FlatList
-                    data={data}
-                    keyExtractor={(it) => String(it.id || it.image_url || it.imageUrl)}
-                    numColumns={COLS}
-                    columnWrapperStyle={{ justifyContent: 'space-between' }}
-                    renderItem={({ item }) => (
-                      <GridItem
-                        uri={item.image_url || item.imageUrl || item.url}
-                        onPress={() =>
-                          navigation.navigate('AddItemDetails', {
-                            itemId: item.id,
-                            imageUrl: item.image_url || item.imageUrl || item.url,
-                            initialType: (item.item_type || item.itemType || 'tshirt').toLowerCase(),
-                            existingTags: item.tags || {},
-                          })
-                        }
-                        onLongPress={() => {
-                          Alert.alert(
-                            t('wardrobe.deleteTitle'),
-                            t('wardrobe.deleteConfirm'),
-                            [
-                              { text: t('common.cancel'), style: 'cancel' },
-                              {
-                                text: t('common.delete'),
-                                style: 'destructive',
-                                onPress: async () => {
-                                  try {
-                                    const token = await SecureStore.getItemAsync('token');
-                                    await api.delete(`/wardrobe/${item.id}`, {
-                                      headers: { Authorization: `Bearer ${token}` },
-                                    });
-                                    fetchWardrobe();
-                                  } catch (e) {
-                                    Alert.alert(t('wardrobe.deleteFailed'), e?.response?.data?.message || e.message || t('common.tryAgain'));
-                                  }
-                                },
-                              },
-                            ]
-                          );
-                        }}
-                      />
-                    )}
-                    contentContainerStyle={{ paddingBottom: BOTTOM_NAV_HEIGHT + insets.bottom + 12 }}
-                  />
-                </View>
-              );
-            }}
-          />
+          <View style={{ flex: 1, paddingHorizontal: PAGE_SIDE_PADDING }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 10 }}>
+              {activeKey === 'all' ? t('wardrobe.all') : typeLabel(activeKey)}
+            </Text>
+            <FlatList
+              data={dataForActive}
+              keyExtractor={(it) => String(it.id || it.image_url || it.imageUrl)}
+              numColumns={COLS}
+              columnWrapperStyle={{ justifyContent: 'space-between' }}
+              renderItem={({ item }) => (
+                <GridItem
+                  uri={item.image_url || item.imageUrl || item.url}
+                  onPress={() =>
+                    navigation.navigate('AddItemDetails', {
+                      itemId: item.id,
+                      imageUrl: item.image_url || item.imageUrl || item.url,
+                      initialType: (item.item_type || item.itemType || 'tshirt').toLowerCase(),
+                      existingTags: item.tags || {},
+                    })
+                  }
+                  onLongPress={() => {
+                    Alert.alert(
+                      t('wardrobe.deleteTitle'),
+                      t('wardrobe.deleteConfirm'),
+                      [
+                        { text: t('common.cancel'), style: 'cancel' },
+                        {
+                          text: t('common.delete'),
+                          style: 'destructive',
+                          onPress: async () => {
+                            try {
+                              const token = await SecureStore.getItemAsync('token');
+                              await api.delete(`/wardrobe/${item.id}`, {
+                                headers: { Authorization: `Bearer ${token}` },
+                              });
+                              fetchWardrobe();
+                            } catch (e) {
+                              Alert.alert(t('wardrobe.deleteFailed'), e?.response?.data?.message || e.message || t('common.tryAgain'));
+                            }
+                          },
+                        },
+                      ]
+                    );
+                  }}
+                />
+              )}
+              contentContainerStyle={{ paddingBottom: BOTTOM_NAV_HEIGHT + insets.bottom + 12 }}
+            />
+          </View>
         )}
       </View>
 
@@ -342,9 +369,8 @@ export default function WardrobeScreen({ navigation }) {
         animationType="slide"
         transparent
         onDismiss={handleModalDismiss}
-        // SHOW STEP AFTER THE MODAL IS VISIBLE (Android needs this)
+        onRequestClose={() => setTypeModalOpen(false)}
         onShow={() => {
-          // first attempt
           setTimeout(() => {
             tutorial.setNext?.({
               anchorId: 'wardrobe:typePicker',
@@ -353,7 +379,6 @@ export default function WardrobeScreen({ navigation }) {
               prefer: 'above',
             });
           }, 200);
-          // small retry if layout was still settling
           setTimeout(() => {
             tutorial.setNext?.({
               anchorId: 'wardrobe:typePicker',
@@ -364,31 +389,87 @@ export default function WardrobeScreen({ navigation }) {
           }, 700);
         }}
       >
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }}>
-          <View style={{ backgroundColor: '#fff', padding: 16, paddingBottom: 24, borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '75%' }}>
-            <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8 }}>{t('wardrobe.pickType')}</Text>
-            <TextInput
-              placeholder={t('wardrobe.searchTypesPlaceholder')}
-              value={typeSearch}
-              onChangeText={setTypeSearch}
-              style={{ height: 36, borderWidth: 1, borderColor: '#ccc', borderRadius: 8, paddingHorizontal: 10, marginBottom: 10 }}
-            />
-            <CoachMark id="wardrobe:typePicker">
-              <FlatList
-                data={MASTER_TYPES.filter(tp => tp.includes(typeSearch.trim().toLowerCase()))}
-                keyExtractor={(tp) => tp}
-                renderItem={({ item }) => (
-                  <TouchableOpacity onPress={() => { setPendingType(item); setTypeModalOpen(false); }} style={{ paddingVertical: 10 }}>
-                    <Text style={{ fontSize: 16 }}>{typeLabel(item)}</Text>
-                  </TouchableOpacity>
-                )}
-                ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: '#eee' }} />}
+        {/* Backdrop that closes the sheet */}
+        <Pressable
+          onPress={() => setTypeModalOpen(false)}
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }}
+        >
+          {/* Stop propagation for taps inside the sheet */}
+          <Pressable onPress={() => {}} style={{ width: '100%' }}>
+            <View
+              style={{
+                backgroundColor: '#fff',
+                paddingTop: 8,
+                paddingHorizontal: 16,
+                paddingBottom: 12,
+                borderTopLeftRadius: 16,
+                borderTopRightRadius: 16,
+                maxHeight: '75%',
+              }}
+            >
+              {/* Grabber + Header with close (X) */}
+              <View style={{ alignItems: 'center', paddingVertical: 6 }}>
+                <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: '#ddd' }} />
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                <Text style={{ fontSize: 18, fontWeight: '600', flex: 1 }}>
+                  {t('wardrobe.pickType')}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setTypeModalOpen(false)}
+                  hitSlop={{ top: 8, left: 8, right: 8, bottom: 8 }}
+                  accessibilityLabel={t('common.close')}
+                >
+                  <Text style={{ fontSize: 22 }}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Search */}
+              <TextInput
+                placeholder={t('wardrobe.searchTypesPlaceholder')}
+                value={typeSearch}
+                onChangeText={setTypeSearch}
+                style={{
+                  height: 36,
+                  borderWidth: 1,
+                  borderColor: '#ccc',
+                  borderRadius: 8,
+                  paddingHorizontal: 10,
+                  marginBottom: 10,
+                }}
               />
-            </CoachMark>
-            <View style={{ height: 8 }} />
-            <Button title={t('common.close')} onPress={() => setTypeModalOpen(false)} />
-          </View>
-        </View>
+
+              {/* Types list */}
+              <CoachMark id="wardrobe:typePicker">
+                <FlatList
+                  data={MASTER_TYPES.filter(tp =>
+                    tp.includes(typeSearch.trim().toLowerCase())
+                  )}
+                  keyExtractor={(tp) => tp}
+                  keyboardShouldPersistTaps="handled"
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      onPress={() => { setPendingType(item); setTypeModalOpen(false); }}
+                      style={{ paddingVertical: 12 }}
+                    >
+                      <Text style={{ fontSize: 16 }}>{typeLabel(item)}</Text>
+                    </TouchableOpacity>
+                  )}
+                  ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: '#eee' }} />}
+                  contentContainerStyle={{
+                    paddingBottom: 16 + (Platform.OS === 'ios' ? 24 : 12), // extra bottom space so last item is tappable
+                  }}
+                  ListFooterComponent={<View style={{ height: 8 }} />}
+                />
+              </CoachMark>
+
+              {/* Optional explicit close button (kept for accessibility/clarity) */}
+              <View style={{ height: 8 }} />
+              <Button title={t('common.close')} onPress={() => setTypeModalOpen(false)} />
+            </View>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       {/* Search modal */}
