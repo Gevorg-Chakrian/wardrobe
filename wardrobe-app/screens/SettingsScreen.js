@@ -37,7 +37,7 @@ const Chip = ({ label, active, onPress }) => (
   </TouchableOpacity>
 );
 
-export default function SettingsScreen() {
+export default function SettingsScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const { lang, t, setLanguage } = useLanguage();
 
@@ -60,7 +60,6 @@ export default function SettingsScreen() {
         const res = await api.get('/settings', { headers: { Authorization: `Bearer ${token}` } });
         const s = res.data?.settings || res.data || {};
         if (typeof s.tutorial_enabled === 'boolean') setTutorialOn(s.tutorial_enabled);
-        // language is controlled by provider (no need to set here)
       } catch {
         // non-fatal
       } finally {
@@ -134,12 +133,31 @@ export default function SettingsScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff', paddingTop: insets.top + 10 }}>
-      <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
-        <Text style={{ fontSize: 22, fontWeight: '800', marginBottom: 12 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+      {/* Header with back arrow */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: 16,
+          paddingTop: insets.top + 8,
+          paddingBottom: 12,
+        }}
+      >
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          hitSlop={{ top: 10, left: 10, right: 10, bottom: 10 }}
+          accessibilityLabel={t('common.back', 'Back')}
+          style={{ padding: 6, marginRight: 8 }}
+        >
+          <Text style={{ fontSize: 22 }}>←</Text>
+        </TouchableOpacity>
+        <Text style={{ fontSize: 20, fontWeight: '800' }}>
           {t('settings.title', 'Settings')}
         </Text>
+      </View>
 
+      <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
         {/* Language */}
         <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>
           {t('settings.language', 'Language')}

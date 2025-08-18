@@ -113,13 +113,11 @@ export default function CreateLookScreen({ navigation }) {
     if (!uploadJustHappenedRef.current) return;
     if (basePhotos.length === 0) return;
 
-    // expand first clothes section so create:item anchor exists
     const typeKeys = Object.keys(clothesByType).sort();
     if (typeKeys.length > 0) setExpandedType(typeKeys[0]);
 
     InteractionManager.runAfterInteractions(() => {
       requestAnimationFrame(() => {
-        // ensure the leftmost tile is visible and measured
         baseScrollRef.current?.scrollTo({ x: 0, animated: true });
         requestAnimationFrame(() => {
           tutorial.queueFront?.([
@@ -259,7 +257,30 @@ export default function CreateLookScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff', paddingTop: insets.top + 20 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+      {/* Header with back arrow (no confirm) */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: 12,
+          paddingTop: insets.top + 8,
+          paddingBottom: 10,
+        }}
+      >
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          hitSlop={{ top: 10, left: 10, right: 10, bottom: 10 }}
+          accessibilityLabel={t('common.back', 'Back')}
+          style={{ padding: 6, marginRight: 6 }}
+        >
+          <Text style={{ fontSize: 22 }}>←</Text>
+        </TouchableOpacity>
+        <Text style={{ fontSize: 18, fontWeight: '700' }}>
+          {t('createLook.title', 'Create Look')}
+        </Text>
+      </View>
+
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         {/* Header + Add my photo (Step 5 anchor) */}
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
@@ -319,7 +340,6 @@ export default function CreateLookScreen({ navigation }) {
                   </TouchableOpacity>
                 );
 
-                // anchor the LEFTMOST tile so bubble appears on its right
                 return idx === 0
                   ? <CoachMark id="create:base:first" key={p.id}>{Body}</CoachMark>
                   : Body;

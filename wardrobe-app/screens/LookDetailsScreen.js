@@ -52,7 +52,6 @@ export default function LookDetailsScreen({ route, navigation }) {
   const lookId = route.params?.lookId;
 
   const [loading, setLoading] = useState(false);
-  // look: { id, image_url, season[], occasion[], components:[{id,image_url,item_type}] }
   const [look, setLook] = useState(null);
   const [selected, setSelected] = useState({ season: [], occasion: [] });
 
@@ -68,12 +67,11 @@ export default function LookDetailsScreen({ route, navigation }) {
       if (!data) throw new Error('Look not found');
 
       setLook(data);
-      // normalize to arrays from either top-level or tags.*
-      const season   = Array.isArray(data.season) ? data.season : (data.tags?.season || []);
-      const occasion = Array.isArray(data.occasion) ? data.occasion : (data.tags?.occasion || []);
+      const season = Array.isArray(data.season) ? data.season : data.tags?.season || [];
+      const occasion = Array.isArray(data.occasion) ? data.occasion : data.tags?.occasion || [];
       setSelected({
-        season: Array.isArray(season) ? season : (season ? [season] : []),
-        occasion: Array.isArray(occasion) ? occasion : (occasion ? [occasion] : []),
+        season: Array.isArray(season) ? season : season ? [season] : [],
+        occasion: Array.isArray(occasion) ? occasion : occasion ? [occasion] : [],
       });
     } catch (e) {
       console.log('fetchLook error', e?.response?.data || e.message);
@@ -87,10 +85,10 @@ export default function LookDetailsScreen({ route, navigation }) {
   useEffect(() => { fetchLook(); }, [fetchLook]);
 
   const toggle = (cat, value, max = Infinity) => {
-    setSelected(prev => {
+    setSelected((prev) => {
       const curr = prev[cat] || [];
       const exists = curr.includes(value);
-      let next = exists ? curr.filter(v => v !== value) : [...curr, value];
+      let next = exists ? curr.filter((v) => v !== value) : [...curr, value];
       if (next.length > max) next = next.slice(0, max);
       return { ...prev, [cat]: next };
     });
@@ -120,50 +118,85 @@ export default function LookDetailsScreen({ route, navigation }) {
     );
   }
 
-  const comps = Array.isArray(look.components) ? look.components : (look.items || []);
+  const comps = Array.isArray(look.components) ? look.components : look.items || [];
   const heroUri = look.image_url || look.imageUrl || look.url;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff', paddingTop: insets.top + 10 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+      {/* Header with back arrow */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: 16,
+          paddingTop: insets.top + 8,
+          paddingBottom: 12,
+        }}
+      >
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          hitSlop={{ top: 10, left: 10, right: 10, bottom: 10 }}
+          accessibilityLabel={t('common.back', 'Back')}
+          style={{ padding: 6, marginRight: 8 }}
+        >
+          <Text style={{ fontSize: 22 }}>←</Text>
+        </TouchableOpacity>
+        <Text style={{ fontSize: 20, fontWeight: '800' }}>
+          {t('lookDetails.title', 'Look Details')}
+        </Text>
+      </View>
+
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         {/* Look image */}
-        <View style={{
-          height: HERO_HEIGHT,
-          backgroundColor: '#f1f1f1',
-          borderRadius: 12,
-          overflow: 'hidden',
-          marginBottom: 14,
-        }}>
+        <View
+          style={{
+            height: HERO_HEIGHT,
+            backgroundColor: '#f1f1f1',
+            borderRadius: 12,
+            overflow: 'hidden',
+            marginBottom: 14,
+          }}
+        >
           <Image source={{ uri: heroUri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
         </View>
 
         {/* Components (readonly) */}
         <Section title={t('lookDetails.components')}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-            {comps && comps.length > 0 ? comps.map((it) => {
-              const uri = it.image_url || it.imageUrl || it.url;
-              return (
-                <View key={it.id} style={{
-                  width: 96, height: 96, borderRadius: 10, overflow: 'hidden', backgroundColor: '#eee',
-                  alignItems: 'center', justifyContent: 'center'
-                }}>
-                  <Image source={{ uri }} style={{ width: '100%', height: '100%' }} />
-                </View>
-              );
-            }) : (
+            {comps && comps.length > 0 ? (
+              comps.map((it) => {
+                const uri = it.image_url || it.imageUrl || it.url;
+                return (
+                  <View
+                    key={it.id}
+                    style={{
+                      width: 96,
+                      height: 96,
+                      borderRadius: 10,
+                      overflow: 'hidden',
+                      backgroundColor: '#eee',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Image source={{ uri }} style={{ width: '100%', height: '100%' }} />
+                  </View>
+                );
+              })
+            ) : (
               <Text style={{ color: '#666' }}>{t('lookDetails.noComponents')}</Text>
             )}
           </View>
         </Section>
 
         {/* Editable tags */}
-        {(['season','occasion']).map((cat) => (
+        {['season', 'occasion'].map((cat) => (
           <Section key={cat} title={t(TITLES_KEYS[cat])}>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
               {TAG_KEYS[cat].map((key) => (
                 <Chip
                   key={key}
-                  label={t(`tags.${cat}.${key}`)}      // localized label
+                  label={t(`tags.${cat}.${key}`)}
                   active={(selected[cat] || []).includes(key)}
                   onPress={() => toggle(cat, key)}
                 />

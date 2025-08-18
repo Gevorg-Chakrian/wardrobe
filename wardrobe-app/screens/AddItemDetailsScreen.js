@@ -10,6 +10,7 @@ import { API_BASE_URL } from '../api/config';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { useFocusEffect } from '@react-navigation/native';
 import { CoachMark, useTutorial } from '../tutorial/TutorialProvider';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const api = axios.create({ baseURL: API_BASE_URL });
 
@@ -56,8 +57,8 @@ const toArray = (v) => Array.isArray(v) ? v : (v ? [v] : []);
 export default function AddItemScreen({ navigation, route }) {
   const { t } = useLanguage();
   const tutorial = useTutorial();
+  const insets = useSafeAreaInsets();
 
-  // ensure we only try to show step 2 once per mount (+ one fallback retry)
   const requestedRef = useRef(false);
   const retriedRef = useRef(false);
 
@@ -82,7 +83,6 @@ export default function AddItemScreen({ navigation, route }) {
   const [heroUrl, setHeroUrl] = useState(imageUrl);
   const [extracting, setExtracting] = useState(false);
 
-  // mark screen + schedule the “choose tags” coach bubble ABOVE the colors
   useFocusEffect(
     React.useCallback(() => {
       tutorial?.onScreen?.('AddItemDetails');
@@ -149,28 +149,7 @@ export default function AddItemScreen({ navigation, route }) {
       Alert.alert(
         t('addItem.savedTitle'),
         isEditing ? t('addItem.savedEdit') : t('addItem.savedAdd'),
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              // Always return to Wardrobe
-              navigation.goBack();
-
-              // If tutorial is enabled, show the next nudge on Wardrobe AFTER we are back,
-              // pointing to the Profile tab.
-              if (tutorial?.isEnabled?.()) {
-                setTimeout(() => {
-                  tutorial.setNext?.({
-                    anchorId: 'nav:profile',
-                    textKey: 'tutorial.gotoProfile',
-                    screen: 'Wardrobe',
-                    prefer: 'above',
-                  });
-                }, 300);
-              }
-            }
-          }
-        ]
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
     } catch (e) {
       Alert.alert(t('common.saveFailed'), e?.response?.data?.message || e.message || t('common.tryAgain'));
@@ -191,6 +170,29 @@ export default function AddItemScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+      {/* Header with back arrow (no alert) */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: 12,
+          paddingTop: insets.top,
+          paddingBottom: 10,
+        }}
+      >
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          hitSlop={{ top: 10, left: 10, right: 10, bottom: 10 }}
+          accessibilityLabel={t('common.back', 'Back')}
+          style={{ padding: 6, marginRight: 6 }}
+        >
+          <Text style={{ fontSize: 22 }}>←</Text>
+        </TouchableOpacity>
+        <Text style={{ fontSize: 18, fontWeight: '700' }}>
+          {isEditing ? t('addItem.editTitle', 'Edit item') : t('addItem.addTitle', 'Add item')}
+        </Text>
+      </View>
+
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 28 }} showsVerticalScrollIndicator={false}>
         {/* hero image */}
         <View style={{ marginTop: 16, marginBottom: 8, borderRadius: 12, overflow: 'hidden', backgroundColor: '#f8f8f8', height: HERO_HEIGHT }}>
@@ -218,7 +220,7 @@ export default function AddItemScreen({ navigation, route }) {
           </View>
         )}
 
-        {/* COLOR section — tutorial anchor */}
+        {/* COLOR section */}
         <CoachMark id="additem:colors">
           <Section title={TITLES.color}>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
@@ -243,7 +245,7 @@ export default function AddItemScreen({ navigation, route }) {
           </Section>
         </CoachMark>
 
-        {(['season','fit','occasion','material','pattern','feature']).map((cat) => (
+        {['season','fit','occasion','material','pattern','feature'].map((cat) => (
           <Section key={cat} title={TITLES[cat]}>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
               {TAGS[cat].map((v) => (

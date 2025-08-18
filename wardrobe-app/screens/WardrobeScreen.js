@@ -67,7 +67,6 @@ export default function WardrobeScreen({ navigation }) {
   const [activeIndex, _setActiveIndex] = useState(0);
   const activeIndexRef = useRef(0);
   const setActiveIndex = (updater) => {
-    // functional form to avoid stale state bugs
     _setActiveIndex((curr) => {
       const next = typeof updater === 'function' ? updater(curr) : updater;
       activeIndexRef.current = next;
@@ -117,7 +116,7 @@ export default function WardrobeScreen({ navigation }) {
     setActiveIndex((curr) => {
       const max = Math.max(0, pages.length - 1);
       const clamped = Math.max(0, Math.min(nextIndex, max));
-      if (clamped === curr) return curr; // no-op
+      if (clamped === curr) return curr;
       return clamped;
     });
   }, [pages.length]);
@@ -127,7 +126,6 @@ export default function WardrobeScreen({ navigation }) {
     if (idx >= 0) goToIndex(idx);
   };
 
-  // search → jump to page
   useEffect(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return;
@@ -139,7 +137,6 @@ export default function WardrobeScreen({ navigation }) {
   const afterInteractions = () =>
     new Promise(r => InteractionManager.runAfterInteractions(r));
 
-  // Open the modal only (do not schedule the tutorial here; do it onShow)
   const askTypeThenUpload = () => {
     setTypeSearch('');
     setTypeModalOpen(true);
@@ -243,7 +240,7 @@ export default function WardrobeScreen({ navigation }) {
     },
     onPanResponderTerminationRequest: () => false,
     onPanResponderRelease: (_e, g) => {
-      const idx = activeIndexRef.current; // <- always current
+      const idx = activeIndexRef.current;
       if (g.dx <= -SWIPE_DX || g.vx <= -SWIPE_VX) {
         goToIndex(idx + 1);
       } else if (g.dx >= SWIPE_DX || g.vx >= SWIPE_VX) {
@@ -399,19 +396,20 @@ export default function WardrobeScreen({ navigation }) {
             <View
               style={{
                 backgroundColor: '#fff',
-                paddingTop: 8,
-                paddingHorizontal: 16,
-                paddingBottom: 12,
                 borderTopLeftRadius: 16,
                 borderTopRightRadius: 16,
-                maxHeight: '75%',
+                height: Math.round(Dimensions.get('window').height * 0.80),
+                paddingTop: 8,
+                paddingHorizontal: 16,
+                paddingBottom: insets?.bottom ?? 8,
               }}
             >
-              {/* Grabber + Header with close (X) */}
+              {/* Grabber */}
               <View style={{ alignItems: 'center', paddingVertical: 6 }}>
                 <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: '#ddd' }} />
               </View>
 
+              {/* Title + X */}
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
                 <Text style={{ fontSize: 18, fontWeight: '600', flex: 1 }}>
                   {t('wardrobe.pickType')}
@@ -440,33 +438,46 @@ export default function WardrobeScreen({ navigation }) {
                 }}
               />
 
-              {/* Types list */}
-              <CoachMark id="wardrobe:typePicker">
-                <FlatList
-                  data={MASTER_TYPES.filter(tp =>
-                    tp.includes(typeSearch.trim().toLowerCase())
-                  )}
-                  keyExtractor={(tp) => tp}
-                  keyboardShouldPersistTaps="handled"
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      onPress={() => { setPendingType(item); setTypeModalOpen(false); }}
-                      style={{ paddingVertical: 12 }}
-                    >
-                      <Text style={{ fontSize: 16 }}>{typeLabel(item)}</Text>
-                    </TouchableOpacity>
-                  )}
-                  ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: '#eee' }} />}
-                  contentContainerStyle={{
-                    paddingBottom: 16 + (Platform.OS === 'ios' ? 24 : 12), // extra bottom space so last item is tappable
-                  }}
-                  ListFooterComponent={<View style={{ height: 8 }} />}
-                />
-              </CoachMark>
+              {/* List fills available space */}
+              <View style={{ flex: 1 }}>
+                <CoachMark id="wardrobe:typePicker">
+                  <FlatList
+                    data={MASTER_TYPES.filter(tp =>
+                      tp.includes(typeSearch.trim().toLowerCase())
+                    )}
+                    keyExtractor={(tp) => tp}
+                    keyboardShouldPersistTaps="handled"
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        onPress={() => { setPendingType(item); setTypeModalOpen(false); }}
+                        style={{ paddingVertical: 12 }}
+                      >
+                        <Text style={{ fontSize: 16 }}>{typeLabel(item)}</Text>
+                      </TouchableOpacity>
+                    )}
+                    ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: '#eee' }} />}
+                    contentContainerStyle={{ paddingBottom: 8 }}
+                  />
+                </CoachMark>
+              </View>
 
-              {/* Optional explicit close button (kept for accessibility/clarity) */}
-              <View style={{ height: 8 }} />
-              <Button title={t('common.close')} onPress={() => setTypeModalOpen(false)} />
+              {/* Button is part of the SAME white sheet */}
+              <TouchableOpacity
+                onPress={() => setTypeModalOpen(false)}
+                activeOpacity={0.85}
+                style={{
+                  height: 44,
+                  borderRadius: 10,
+                  backgroundColor: '#1976D2',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginTop: 8,
+                }}
+              >
+                <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>
+                  {t('common.close')}
+                </Text>
+              </TouchableOpacity>
             </View>
           </Pressable>
         </Pressable>
