@@ -23,7 +23,7 @@ const MASTER_TYPES = [
   'bag','hat','scarf','accessory'
 ];
 
-const { width: SCREEN_W } = Dimensions.get('window');
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const PAGE_SIDE_PADDING = 12;
 const COLS = 2;
 const ROW_GAP = 12;
@@ -137,6 +137,7 @@ export default function WardrobeScreen({ navigation }) {
   const afterInteractions = () =>
     new Promise(r => InteractionManager.runAfterInteractions(r));
 
+  // Open the modal only (do not schedule the tutorial here; do it onShow)
   const askTypeThenUpload = () => {
     setTypeSearch('');
     setTypeModalOpen(true);
@@ -255,6 +256,28 @@ export default function WardrobeScreen({ navigation }) {
   const activeKey = pages[activeIndex] || 'all';
   const dataForActive = activeKey === 'all' ? items : (grouped[activeKey] || []);
 
+  /** ------- Tabs autoscroll state/refs ------- */
+  const tabsRef = useRef(null);
+  const tabLayoutsRef = useRef({}); // { [index]: {x, width} }
+  const [tabsContentW, setTabsContentW] = useState(0);
+
+  // center (or clamp) the active tab inside the horizontal ScrollView
+  useEffect(() => {
+    const layout = tabLayoutsRef.current[activeIndex];
+    if (!layout || !tabsRef.current) return;
+
+    const desiredCenterX = layout.x + layout.width / 2;
+    const targetX = Math.max(
+      0,
+      Math.min(
+        desiredCenterX - SCREEN_W / 2,
+        Math.max(0, tabsContentW - SCREEN_W)
+      )
+    );
+
+    tabsRef.current.scrollTo({ x: targetX, animated: true });
+  }, [activeIndex, tabsContentW, pages.length]);
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
       {/* Top controls */}
@@ -280,16 +303,26 @@ export default function WardrobeScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* Tabs */}
+        {/* Tabs (auto-centering active) */}
         <ScrollView
+          ref={tabsRef}
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 6 }}
+          onContentSizeChange={(w) => setTabsContentW(w)}
         >
           {pages.map((tpe, i) => {
             const active = i === activeIndex;
             return (
-              <TouchableOpacity key={tpe} onPress={() => goToIndex(i)} style={{ marginRight: 18, alignItems: 'center' }}>
+              <TouchableOpacity
+                key={tpe}
+                onLayout={(e) => {
+                  const { x, width } = e.nativeEvent.layout;
+                  tabLayoutsRef.current[i] = { x, width };
+                }}
+                onPress={() => goToIndex(i)}
+                style={{ marginRight: 18, alignItems: 'center' }}
+              >
                 <Text style={{ fontSize: 16, fontWeight: active ? '700' : '600', color: active ? '#000' : '#666' }}>
                   {tpe === 'all' ? t('wardrobe.all') : typeLabel(tpe)}
                 </Text>
@@ -398,7 +431,7 @@ export default function WardrobeScreen({ navigation }) {
                 backgroundColor: '#fff',
                 borderTopLeftRadius: 16,
                 borderTopRightRadius: 16,
-                height: Math.round(Dimensions.get('window').height * 0.80),
+                height: Math.round(SCREEN_H * 0.80),
                 paddingTop: 8,
                 paddingHorizontal: 16,
                 paddingBottom: insets?.bottom ?? 8,
@@ -461,7 +494,7 @@ export default function WardrobeScreen({ navigation }) {
                 </CoachMark>
               </View>
 
-              {/* Button is part of the SAME white sheet */}
+              {/* Close button */}
               <TouchableOpacity
                 onPress={() => setTypeModalOpen(false)}
                 activeOpacity={0.85}

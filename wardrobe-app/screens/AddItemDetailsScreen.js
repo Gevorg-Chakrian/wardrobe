@@ -79,6 +79,7 @@ export default function AddItemScreen({ navigation, route }) {
   };
 
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [selected, setSelected] = useState(isEditing ? initialSelected : emptySel);
   const [heroUrl, setHeroUrl] = useState(imageUrl);
   const [extracting, setExtracting] = useState(false);
@@ -156,6 +157,33 @@ export default function AddItemScreen({ navigation, route }) {
     } finally {
       setSaving(false);
     }
+  };
+
+  const onDeleteItem = () => {
+    if (!isEditing || !itemId) return;
+    Alert.alert(
+      t('wardrobe.deleteTitle', 'Delete item?'),
+      t('wardrobe.deleteConfirm', 'Are you sure you want to delete this item?'),
+      [
+        { text: t('common.cancel', 'Cancel'), style: 'cancel' },
+        {
+          text: t('common.delete', 'Delete'),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setDeleting(true);
+              const token = await SecureStore.getItemAsync('token');
+              await api.delete(`/wardrobe/${itemId}`, { headers: { Authorization: `Bearer ${token}` } });
+              navigation.goBack();
+            } catch (e) {
+              Alert.alert(t('common.error', 'Error'), t('common.deleteFailed', 'Failed to delete. Please try again.'));
+            } finally {
+              setDeleting(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   const TITLES = {
@@ -265,9 +293,33 @@ export default function AddItemScreen({ navigation, route }) {
           <Button
             title={saving ? t('common.saving') : (isEditing ? t('addItem.saveChanges') : t('addItem.saveItem'))}
             onPress={onSave}
-            disabled={saving}
+            disabled={saving || deleting}
           />
         </CoachMark>
+
+        {/* Delete item — only when editing */}
+        {isEditing && (
+          <>
+            <View style={{ height: 10 }} />
+            <TouchableOpacity
+              onPress={onDeleteItem}
+              disabled={deleting}
+              activeOpacity={0.85}
+              style={{
+                height: 44,
+                borderRadius: 10,
+                backgroundColor: '#E53935',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: deleting ? 0.7 : 1,
+              }}
+            >
+              <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>
+                {deleting ? t('common.deleting', 'Deleting…') : t('addItem.deleteItem', 'Delete item')}
+              </Text>
+            </TouchableOpacity>
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );

@@ -75,7 +75,7 @@ export default function LookDetailsScreen({ route, navigation }) {
       });
     } catch (e) {
       console.log('fetchLook error', e?.response?.data || e.message);
-      Alert.alert(t('common.error'), t('lookDetails.loadError'));
+      Alert.alert(t('common.error', 'Error'), t('lookDetails.loadError', 'Failed to load look.'));
       navigation.goBack();
     } finally {
       setLoading(false);
@@ -102,12 +102,35 @@ export default function LookDetailsScreen({ route, navigation }) {
         { season: selected.season, occasion: selected.occasion },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      Alert.alert(t('lookDetails.savedTitle'), t('lookDetails.savedMsg'));
+      Alert.alert(t('lookDetails.savedTitle', 'Saved'), t('lookDetails.savedMsg', 'Your changes have been saved.'));
       navigation.goBack();
     } catch (e) {
       console.log('update look error', e?.response?.data || e.message);
-      Alert.alert(t('common.error'), t('lookDetails.saveFailed'));
+      Alert.alert(t('common.error', 'Error'), t('lookDetails.saveFailed', 'Failed to save changes.'));
     }
+  };
+
+  const onDelete = () => {
+    Alert.alert(
+      t('lookDetails.deleteTitle', 'Delete look?'),
+      t('lookDetails.deleteBody', 'This cannot be undone.'),
+      [
+        { text: t('common.cancel', 'Cancel'), style: 'cancel' },
+        {
+          text: t('common.delete', 'Delete'),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const token = await getToken();
+              await api.delete(`/looks/${lookId}`, { headers: { Authorization: `Bearer ${token}` } });
+              navigation.goBack();
+            } catch (e) {
+              Alert.alert(t('common.error', 'Error'), t('lookDetails.deleteFailed', 'Failed to delete. Please try again.'));
+            }
+          }
+        }
+      ]
+    );
   };
 
   if (!look) {
@@ -161,7 +184,7 @@ export default function LookDetailsScreen({ route, navigation }) {
         </View>
 
         {/* Components (readonly) */}
-        <Section title={t('lookDetails.components')}>
+        <Section title={t('lookDetails.components', 'Components')}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
             {comps && comps.length > 0 ? (
               comps.map((it) => {
@@ -184,7 +207,7 @@ export default function LookDetailsScreen({ route, navigation }) {
                 );
               })
             ) : (
-              <Text style={{ color: '#666' }}>{t('lookDetails.noComponents')}</Text>
+              <Text style={{ color: '#666' }}>{t('lookDetails.noComponents', 'No components')}</Text>
             )}
           </View>
         </Section>
@@ -206,7 +229,25 @@ export default function LookDetailsScreen({ route, navigation }) {
         ))}
 
         <View style={{ height: 18 }} />
-        <Button title={t('lookDetails.save')} onPress={onSave} />
+        <Button title={t('lookDetails.save', 'Save')} onPress={onSave} />
+
+        {/* Delete look */}
+        <View style={{ height: 10 }} />
+        <TouchableOpacity
+          onPress={onDelete}
+          activeOpacity={0.85}
+          style={{
+            height: 44,
+            borderRadius: 10,
+            backgroundColor: '#E53935',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>
+            {t('lookDetails.delete', 'Delete look')}
+          </Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );

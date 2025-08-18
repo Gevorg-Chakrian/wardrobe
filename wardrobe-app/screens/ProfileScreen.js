@@ -93,6 +93,7 @@ export default function ProfileScreen({ navigation }) {
   const [username, setUsername] = useState('Profile');
   const [looks, setLooks] = useState([]);
   const [ratios, setRatios] = useState({}); // id -> aspectRatio (w/h)
+  const [deletingIds, setDeletingIds] = useState({}); // id -> true while deleting
 
   useEffect(() => { (async () => setUsername(await resolveDisplayName()))(); }, []);
 
@@ -133,6 +134,45 @@ export default function ProfileScreen({ navigation }) {
     if (hA <= hB) { colA.push(lk); hA += estH + GAP; } else { colB.push(lk); hB += estH + GAP; }
   });
 
+  /** Delete flow */
+  const confirmDelete = (lookId) => {
+    Alert.alert(
+      t('profile.deleteLookTitle', 'Delete look?'),
+      t('profile.deleteLookBody', 'This cannot be undone.'),
+      [
+        { text: t('common.cancel', 'Cancel'), style: 'cancel' },
+        {
+          text: t('common.delete', 'Delete'),
+          style: 'destructive',
+          onPress: () => doDelete(lookId),
+        },
+      ]
+    );
+  };
+
+  const doDelete = async (lookId) => {
+    if (!lookId || deletingIds[lookId]) return;
+    try {
+      setDeletingIds(prev => ({ ...prev, [lookId]: true }));
+      // optimistic UI: drop locally
+      setLooks(prev => prev.filter(l => l.id !== lookId));
+      const token = await getToken();
+      await api.delete(`/looks/${lookId}`, { headers: { Authorization: `Bearer ${token}` } });
+      // refresh to be safe (in case newest changed, etc.)
+      fetchLooks();
+    } catch (e) {
+      // revert by refetch if failed
+      await fetchLooks();
+      Alert.alert(t('common.error', 'Error'), t('profile.deleteLookFailed', 'Failed to delete. Please try again.'));
+    } finally {
+      setDeletingIds(prev => {
+        const next = { ...prev };
+        delete next[lookId];
+        return next;
+      });
+    }
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff', paddingTop: insets.top + 10 }}>
       {/* Header */}
@@ -164,13 +204,22 @@ export default function ProfileScreen({ navigation }) {
             if (!latest) return null;
             const ratio = ratios[latest.id] || 1;
             const uri = latest.image_url || latest.imageUrl || latest.url;
+            const isDeleting = !!deletingIds[latest.id];
             return (
               <View style={{ paddingHorizontal: SIDE, marginBottom: 16 }}>
                 <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 8 }}>{t('profile.latestLook')}</Text>
                 <TouchableOpacity
                   onPress={() => navigation.navigate('LookDetails', { lookId: latest.id })}
+                  onLongPress={() => confirmDelete(latest.id)}
+                  delayLongPress={400}
                   activeOpacity={0.85}
-                  style={{ width: '100%', borderRadius: 12, overflow: 'hidden', backgroundColor: '#eee' }}
+                  style={{
+                    width: '100%',
+                    borderRadius: 12,
+                    overflow: 'hidden',
+                    backgroundColor: '#eee',
+                    opacity: isDeleting ? 0.6 : 1,
+                  }}
                 >
                   <Image source={{ uri }} style={{ width: '100%', aspectRatio: ratio }} resizeMode="cover" />
                 </TouchableOpacity>
@@ -184,12 +233,21 @@ export default function ProfileScreen({ navigation }) {
               <View style={{ width: COL_W }}>
                 {colA.map(lk => {
                   const uri = lk.image_url || lk.imageUrl || lk.url;
+                  const isDeleting = !!deletingIds[lk.id];
                   return (
                     <TouchableOpacity
                       key={lk.id}
                       onPress={() => navigation.navigate('LookDetails', { lookId: lk.id })}
+                      onLongPress={() => confirmDelete(lk.id)}
+                      delayLongPress={400}
                       activeOpacity={0.85}
-                      style={{ marginBottom: GAP, borderRadius: 12, overflow: 'hidden', backgroundColor: '#eee' }}
+                      style={{
+                        marginBottom: GAP,
+                        borderRadius: 12,
+                        overflow: 'hidden',
+                        backgroundColor: '#eee',
+                        opacity: isDeleting ? 0.6 : 1,
+                      }}
                     >
                       <Image source={{ uri }} style={{ width: '100%', aspectRatio: ratios[lk.id] || 1 }} resizeMode="cover" />
                     </TouchableOpacity>
@@ -199,12 +257,21 @@ export default function ProfileScreen({ navigation }) {
               <View style={{ width: COL_W }}>
                 {colB.map(lk => {
                   const uri = lk.image_url || lk.imageUrl || lk.url;
+                  const isDeleting = !!deletingIds[lk.id];
                   return (
                     <TouchableOpacity
                       key={lk.id}
                       onPress={() => navigation.navigate('LookDetails', { lookId: lk.id })}
+                      onLongPress={() => confirmDelete(lk.id)}
+                      delayLongPress={400}
                       activeOpacity={0.85}
-                      style={{ marginBottom: GAP, borderRadius: 12, overflow: 'hidden', backgroundColor: '#eee' }}
+                      style={{
+                        marginBottom: GAP,
+                        borderRadius: 12,
+                        overflow: 'hidden',
+                        backgroundColor: '#eee',
+                        opacity: isDeleting ? 0.6 : 1,
+                      }}
                     >
                       <Image source={{ uri }} style={{ width: '100%', aspectRatio: ratios[lk.id] || 1 }} resizeMode="cover" />
                     </TouchableOpacity>
