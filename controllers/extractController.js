@@ -1,105 +1,86 @@
-const path = require('path');
-const os = require('os');
-const fs = require('fs');
-const axios = require('axios');
+// controllers/extractController.js
 const { OpenAI } = require('openai');
+const axios = require('axios');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 require('dotenv').config();
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// tiny helper
-function isHttpUrl(u) {
-  try {
-    const { protocol } = new URL(u);
-    return protocol === 'http:' || protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
+/** Robust HTTP download to a temp file */
+async function downloadToTemp(imageUrl) {
+  const tmp = path.join(os.tmpdir(), `in_${Date.now()}_${Math.random().toString(36).slice(2)}.bin`);
+  const resp = await axios.get(imageUrl, {
+    responseType: 'arraybuffer',
+    maxRedirects: 10,
+    // Some hosts (e.g. Wikimedia) require a UA
+    headers: {
+      'User-Agent': 'WardrobeApp/1.0 (+https://example.com)',
+      'Accept': 'image/*,*/*;q=0.8',
+    },
+    validateStatus: (s) => s >= 200 && s < 400, // allow redirects
+  }).catch((err) => {
+    // Surface more detail
+    const data = err?.response?.data;
+    const text = Buffer.isBuffer(data) ? data.toString('utf8').slice(0, 500) : String(data || '');
+    throw Object.assign(new Error(`Download failed (${err?.response?.status || 'no status'}) from ${imageUrl}`), {
+      status: err?.response?.status,
+      text,
+    });
+  });
 
-async function downloadToTemp(url) {
-  const resp = await axios.get(url, { responseType: 'arraybuffer', timeout: 20000 });
-  const ext =
-    (resp.headers['content-type'] && resp.headers['content-type'].includes('png'))
-      ? '.png'
-      : '.jpg';
-  const tmpFile = path.join(os.tmpdir(), `wardrobe_in_${Date.now()}${ext}`);
-  fs.writeFileSync(tmpFile, resp.data);
-  return tmpFile;
+  fs.writeFileSync(tmp, resp.data);
+  return tmp;
 }
 
 exports.extractClothingItem = async (req, res) => {
-  const { imageUrl, itemType } = req.body || {};
+  const { imageUrl, itemType } = req.body;
 
   if (!imageUrl || !itemType) {
     return res.status(400).json({ message: 'Missing imageUrl or itemType' });
   }
-  if (!isHttpUrl(imageUrl)) {
-    return res.status(400).json({
-      message: 'imageUrl must be a public http(s) URL (not a local path)',
-      example: 'https://upload.wikimedia.org/wikipedia/commons/6/6e/Tshirtwhite.png',
-    });
-  }
 
-  // Your detailed prompt (feel free to tweak wording)
-  const prompt = `Extract only the ${itemType} from the provided image, completely removing the background, person, and any accessories. Place the ${itemType} on a clean, uniform white background without reflections. Ensure realistic studio lighting with soft, natural shadows. Center the ${itemType} and crop so it fills most of the frame without cutting edges. Make it look freshly ironed (neat, wrinkle-free). Preserve original colors, textures, patterns, and proportions. The final result should look like a high-quality studio product photo for an online wardrobe catalog.`;
-
-  let tmpFile = null;
   try {
-    // 1) Download the source image to a temp file
-    tmpFile = await downloadToTemp(imageUrl);
+    // 1) Download input (with robust headers/redirects)
+    const inputPath = await downloadToTemp(imageUrl);
 
-    // 2) Send to OpenAI Images Edit endpoint
-    //    (no mask provided—let the model do the background removal per prompt)
-    const resp = await openai.images.edits({
+    // 2) Build your prompt (you can tweak this copy)
+    const prompt = `
+Extract only the ${itemType} from the provided image, removing background, person, and accessories.
+Place it on a clean white background with soft, realistic studio shadows.
+Center and crop so it fills most of the frame (no cut-offs). Smooth wrinkles; preserve original colors, textures, and proportions.
+Output a high-quality catalog-style photo.
+`.trim();
+
+    // 3) Call OpenAI Images API (edits with image input)
+    //    NOTE: This expects you’ve enabled the Images API in your OpenAI account.
+    const result = await openai.images.edits({
+      // Use a capable image model here (e.g., "gpt-image-1")
       model: 'gpt-image-1',
-      image: fs.createReadStream(tmpFile),
       prompt,
+      // send the downloaded file
+      image: fs.createReadStream(inputPath),
       size: '1024x1024',
-      // You can also set: background: "transparent" — but many clients prefer white product shots
+      // You can request PNG for clean background; JPG also OK
+      // background: "white" // optional if supported in your tier
     });
 
-    if (!resp?.data?.[0]?.b64_json) {
-      console.error('OpenAI images.edits returned no b64_json:', resp);
-      return res.status(502).json({ message: 'Image generation failed (no image returned)' });
+    // 4) Return the generated image URL
+    const out = result?.data?.[0];
+    if (!out?.url) {
+      throw new Error('OpenAI response missing image URL');
     }
+    return res.status(200).json({ imageUrl: out.url });
 
-    // 3) Return a data URL (easy to display in RN <Image />)
-    const b64 = resp.data[0].b64_json;
-    const dataUrl = `data:image/png;base64,${b64}`;
-
-    return res.status(200).json({
-      message: 'Clothing item generated',
-      imageUrl: dataUrl,
-      meta: { source: 'openai:gpt-image-1', size: '1024x1024' },
-    });
-  } catch (err) {
-    // Log as much as possible to Render logs
-    const status = err?.response?.status;
-    const text = err?.response?.statusText;
-    const openaiErr = err?.response?.data;
-
+  } catch (error) {
     console.error('EXTRACT ERROR →', {
-      message: err?.message,
-      status,
-      text,
-      openaiErr,
-      stack: err?.stack,
+      message: error?.message,
+      status: error?.status,
+      text: error?.text,
+      stack: error?.stack,
     });
-
-    return res.status(500).json({
-      message: 'Failed to extract clothing item',
-      error: err?.message || 'unknown',
-      status,
-      details: openaiErr || null,
-    });
-  } finally {
-    // Clean up temp file
-    if (tmpFile) {
-      fs.promises.unlink(tmpFile).catch(() => {});
-    }
+    return res.status(500).json({ message: 'Failed to extract clothing item', error: error?.message, status: error?.status, text: error?.text });
   }
 };
