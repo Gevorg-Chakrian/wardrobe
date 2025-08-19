@@ -33,6 +33,42 @@ const TILE_W = Math.floor((SCREEN_W - PAGE_SIDE_PADDING * 2 - ROW_GAP) / COLS);
 const SWIPE_DX = 40;
 const SWIPE_VX = 0.35;
 
+/** ---------------- robust upload helpers ---------------- */
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// 2 retries (3 total attempts) with 30s timeout each
+async function postWithRetry(url, data, config, { retries = 2, timeout = 30000 } = {}) {
+  let attempt = 0;
+  // ensure axios respects multipart body without transforms
+  const baseCfg = {
+    ...config,
+    timeout,
+    maxBodyLength: Infinity,
+    headers: { ...(config?.headers || {}), 'Content-Type': 'multipart/form-data' },
+    transformRequest: [(d) => d],
+  };
+
+  while (true) {
+    try {
+      return await api.post(url, data, baseCfg);
+    } catch (err) {
+      const isTimeout = err.code === 'ECONNABORTED' || /timeout/i.test(err.message || '');
+      const isNetErr  = err.message === 'Network Error';
+      const status    = err?.response?.status;
+
+      // Retry on timeouts, generic network errors, and 5xx
+      if (attempt < retries && (isTimeout || isNetErr || (status >= 500 && status <= 599))) {
+        attempt += 1;
+        // exponential backoff: 800ms, 1600ms, ...
+        await sleep(800 * attempt);
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+/** ------------------------------------------------------- */
+
 export default function WardrobeScreen({ navigation }) {
   const tutorial = useTutorial();
   useFocusEffect(useCallback(() => {
@@ -152,7 +188,9 @@ export default function WardrobeScreen({ navigation }) {
 
       const mediaType = ImagePicker.MediaType?.Images ?? ImagePicker.MediaTypeOptions.Images;
       const picked = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: mediaType, quality: 0.9,
+        mediaTypes: mediaType,
+        // slightly lower quality to avoid giant payloads that can timeout on mobile networks
+        quality: 0.8,
         presentationStyle: Platform.OS === 'ios' ? 'fullScreen' : undefined,
         allowsMultipleSelection: false,
       });
@@ -168,10 +206,11 @@ export default function WardrobeScreen({ navigation }) {
       form.append('item_type', chosenType);
 
       const token = await getToken();
-
       setIsUploading(true);
-      const uploadRes = await api.post('/upload', form, {
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
+
+      // ---- robust post with retries & timeout ----
+      const uploadRes = await postWithRetry('/upload', form, {
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       const { image_url, item_type, url, type: detected } = uploadRes.data || {};
@@ -180,8 +219,14 @@ export default function WardrobeScreen({ navigation }) {
 
       navigation.navigate('AddItemDetails', { imageUrl, initialType: finalType });
     } catch (e) {
-      console.log('upload failed:', e.response ? e.response.data : e.message);
-      Alert.alert(t('common.uploadFailed'), e?.response?.data?.message || e.message || t('common.tryAgain'));
+      console.log('upload failed:', e?.response?.data || e.message);
+      const msg =
+        e?.response?.data?.message ||
+        (e?.message === 'Network Error'
+          ? t('common.networkIssue', 'Network issue. Please check your connection and try again.')
+          : e?.message) ||
+        t('common.tryAgain');
+      Alert.alert(t('common.uploadFailed'), msg);
     } finally {
       setIsPicking(false);
       setIsUploading(false);

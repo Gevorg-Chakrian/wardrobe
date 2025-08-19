@@ -19,8 +19,7 @@ const TITLES_KEYS = {
   occasion: 'lookDetails.occasion',
 };
 
-const SCREEN_W = Dimensions.get('window').width;
-const HERO_HEIGHT = Math.min(500, Math.round(SCREEN_W * 1.25));
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 const Chip = ({ active, label, onPress }) => (
   <TouchableOpacity
@@ -54,6 +53,10 @@ export default function LookDetailsScreen({ route, navigation }) {
   const [loading, setLoading] = useState(false);
   const [look, setLook] = useState(null);
   const [selected, setSelected] = useState({ season: [], occasion: [] });
+
+  // hero sizing: keep full image visible on all devices
+  const [heroRatio, setHeroRatio] = useState(3 / 4); // w / h fallback
+  const MAX_HERO_H = Math.round(SCREEN_H * 0.75);
 
   const getToken = async () => SecureStore.getItemAsync('token');
 
@@ -133,6 +136,19 @@ export default function LookDetailsScreen({ route, navigation }) {
     );
   };
 
+  // --- keep hooks above any early returns ---
+  // Safe even when `look` is null
+  const heroUri = look?.image_url || look?.imageUrl || look?.url;
+  useEffect(() => {
+    if (!heroUri) return;
+    Image.getSize(
+      heroUri,
+      (w, h) => { if (w > 0 && h > 0) setHeroRatio(w / h); },
+      () => {}
+    );
+  }, [heroUri]);
+  // ------------------------------------------
+
   if (!look) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: '#fff', paddingTop: insets.top + 10 }}>
@@ -142,7 +158,8 @@ export default function LookDetailsScreen({ route, navigation }) {
   }
 
   const comps = Array.isArray(look.components) ? look.components : look.items || [];
-  const heroUri = look.image_url || look.imageUrl || look.url;
+  // compute a height that preserves the aspect ratio without exceeding screen height
+  const heroHeight = Math.min(MAX_HERO_H, Math.round(SCREEN_W / Math.max(0.01, heroRatio)));
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
@@ -173,14 +190,14 @@ export default function LookDetailsScreen({ route, navigation }) {
         {/* Look image */}
         <View
           style={{
-            height: HERO_HEIGHT,
+            height: heroHeight,
             backgroundColor: '#f1f1f1',
             borderRadius: 12,
             overflow: 'hidden',
             marginBottom: 14,
           }}
         >
-          <Image source={{ uri: heroUri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+          <Image source={{ uri: heroUri }} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
         </View>
 
         {/* Components (readonly) */}
