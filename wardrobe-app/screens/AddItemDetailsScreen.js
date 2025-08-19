@@ -7,6 +7,7 @@ import {
 import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import { API_BASE_URL } from '../api/config';
+import { extractSync } from '../api/ai';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { useFocusEffect } from '@react-navigation/native';
 import { CoachMark, useTutorial } from '../tutorial/TutorialProvider';
@@ -115,13 +116,10 @@ export default function AddItemScreen({ navigation, route }) {
   const retryExtraction = async () => {
     try {
       setExtracting(true);
-      const token = await SecureStore.getItemAsync('token');
-      const res = await api.post(
-        '/extract',
-        { imageUrl: heroUrl, itemType: initialType },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const newUrl = res.data?.imageUrl;
+      const { imageUrl: newUrl } = await extractSync({
+        imageUrl: heroUrl,
+        itemType: initialType,
+      });
       if (!newUrl) throw new Error('No imageUrl returned from extractor');
       setHeroUrl(newUrl);
       Alert.alert(t('addItem.extractUpdatedTitle'), t('addItem.extractUpdatedBody'));
