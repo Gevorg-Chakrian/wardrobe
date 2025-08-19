@@ -446,22 +446,16 @@ export default function WardrobeScreen({ navigation }) {
         onDismiss={handleModalDismiss}
         onRequestClose={() => setTypeModalOpen(false)}
         onShow={() => {
-          setTimeout(() => {
-            tutorial.setNext?.({
-              anchorId: 'wardrobe:typePicker',
-              textKey: 'tutorial.pickType',
-              screen: 'Wardrobe',
-              prefer: 'above',
-            });
-          }, 200);
-          setTimeout(() => {
-            tutorial.setNext?.({
-              anchorId: 'wardrobe:typePicker',
-              textKey: 'tutorial.pickType',
-              screen: 'Wardrobe',
-              prefer: 'above',
-            });
-          }, 700);
+          if (tutorial?.isRunning?.()) {
+            setTimeout(() => {
+              tutorial.setNext?.({
+                anchorId: 'wardrobe:typePicker',
+                textKey: 'tutorial.pickType',
+                screen: 'Wardrobe',
+                prefer: 'above',
+              });
+            }, 250);
+          }
         }}
       >
         {/* Backdrop that closes the sheet */}

@@ -1,4 +1,4 @@
-// LoginScreen.js
+// screens/LoginScreen.js
 import React, { useState } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, Alert } from 'react-native';
 import axios from 'axios';
@@ -8,39 +8,59 @@ import { AUTH_BASE_URL } from '../api/config';
 const LoginScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const handleLogin = async () => {
+    if (submitting) return;
     try {
+      setSubmitting(true);
+
       const res = await axios.post(`${AUTH_BASE_URL}/login`, { email, password });
 
       // backend should return { token, user }
       const { token, user } = res.data || {};
-      if (!token) {
-        throw new Error('No token returned from server');
-      }
+      if (!token) throw new Error('No token returned from server');
 
-      // Save token for later API calls (Wardrobe screen reads it)
+      // Save token for later API calls
       await SecureStore.setItemAsync('token', token);
 
-      console.log('Logged in:', user);
+      // Optional: store a pretty name for Landing greeting if you have it
+      if (user?.name) {
+        await SecureStore.setItemAsync('username', String(user.name));
+      }
 
-      // Reset stack so user can’t go “back” to Login
+      // Reset stack so user can’t go back to Login; go to Landing first
       navigation.reset({
         index: 0,
-        routes: [{ name: 'Wardrobe' }],
+        routes: [{ name: 'Landing' }],
       });
     } catch (err) {
       console.error(err?.response?.data || err.message);
       Alert.alert('Login Failed', err?.response?.data?.message || 'Something went wrong');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Login</Text>
-      <TextInput style={styles.input} placeholder="Email" value={email} onChangeText={setEmail} />
-      <TextInput style={styles.input} placeholder="Password" secureTextEntry value={password} onChangeText={setPassword} />
-      <Button title="Login" onPress={handleLogin} />
+      <TextInput
+        style={styles.input}
+        placeholder="Email"
+        autoCapitalize="none"
+        keyboardType="email-address"
+        value={email}
+        onChangeText={setEmail}
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="Password"
+        secureTextEntry
+        value={password}
+        onChangeText={setPassword}
+      />
+      <Button title={submitting ? 'Logging in…' : 'Login'} onPress={handleLogin} disabled={submitting} />
       <Text style={styles.link} onPress={() => navigation.navigate('Register')}>
         Don't have an account? Register
       </Text>

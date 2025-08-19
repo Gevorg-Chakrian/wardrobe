@@ -14,6 +14,7 @@ import ProfileScreen from './screens/ProfileScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import AddLookDetailsScreen from './screens/AddLookDetailsScreen';
 import LookDetailsScreen from './screens/LookDetailsScreen';
+import LandingScreen from './screens/LandingScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -23,8 +24,18 @@ export default function App() {
       <TutorialProvider>
         <NavigationContainer>
           <Stack.Navigator initialRouteName="Login" screenOptions={{ headerShown: false }}>
+            {/* Auth */}
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="Register" component={RegisterScreen} />
+
+            {/* Landing shows once per app launch after login */}
+            <Stack.Screen
+              name="Landing"
+              component={LandingScreen}
+              options={{ animation: 'fade' }}
+            />
+
+            {/* Main app */}
             <Stack.Screen
               name="Wardrobe"
               component={WardrobeScreen}

@@ -71,19 +71,19 @@ export default function ProfileScreen({ navigation }) {
   useFocusEffect(
     useCallback(() => {
       tutorial?.onScreen?.('Profile');
-      tutorial?.startIfEnabled?.('Profile');
-      if (!profileStepShown.current && tutorial?.isEnabled?.()) {
-        profileStepShown.current = true;
-        // Nudge: point to the Create Look button
-        setTimeout(() => {
-          tutorial.setNext?.({
-            anchorId: 'profile:createLook',
-            textKey: 'tutorial.createLook',
-            screen: 'Profile',
-            prefer: 'below',
-          });
-        }, 150);
-      }
+      tutorial?.startIfEnabled?.();
+      // if (!profileStepShown.current && tutorial?.isEnabled?.()) {
+      //   profileStepShown.current = true;
+      //   // Nudge: point to the Create Look button
+      //   setTimeout(() => {
+      //     tutorial.setNext?.({
+      //       anchorId: 'profile:createLook',
+      //       textKey: 'tutorial.createLook',
+      //       screen: 'Profile',
+      //       prefer: 'below',
+      //     });
+      //   }, 150);
+      // }
     }, [tutorial])
   );
 

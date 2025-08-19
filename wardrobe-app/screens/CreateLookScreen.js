@@ -89,9 +89,8 @@ export default function CreateLookScreen({ navigation }) {
 
   useFocusEffect(useCallback(() => { fetchWardrobe(); }, [fetchWardrobe]));
 
-  // Step 5: “Add my photo” if no base yet
   useEffect(() => {
-    if (!tutorial?.isEnabled?.()) return;
+    if (!tutorial?.isRunning?.()) return;
     if (step5ShownRef.current) return;
     if (basePhotos.length > 0) return;
 

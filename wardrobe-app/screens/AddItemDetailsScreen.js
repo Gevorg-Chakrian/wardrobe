@@ -152,6 +152,20 @@ export default function AddItemScreen({ navigation, route }) {
         isEditing ? t('addItem.savedEdit') : t('addItem.savedAdd'),
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
+
+      // Queue Step 4: point at the Profile tab once we're back on Wardrobe
+      try {
+        if (tutorial?.isRunning?.()) {
+          tutorial.queueFront?.([
+            {
+              screen: 'Wardrobe',
+              anchorId: 'nav:profile',
+              textKey: 'tutorial.gotoProfile', // add this i18n key if missing
+              prefer: 'above',
+            },
+          ]);
+        }
+      } catch {}
     } catch (e) {
       Alert.alert(t('common.saveFailed'), e?.response?.data?.message || e.message || t('common.tryAgain'));
     } finally {

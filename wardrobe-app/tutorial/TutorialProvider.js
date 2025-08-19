@@ -1,3 +1,4 @@
+// tutorial/TutorialProvider.js
 import React, {
   createContext, useCallback, useContext, useEffect,
   useMemo, useRef, useState
@@ -6,6 +7,7 @@ import { View, Text, Modal, Pressable, Dimensions } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import { API_BASE_URL } from '../api/config';
+import { canAutoStartTutorial, consumeTutorialStartWindow } from '../tutorial/sessionFlags';
 
 const TutorialContext = createContext(null);
 export const useTutorial = () => useContext(TutorialContext);
@@ -15,24 +17,24 @@ const DEFAULT_ENABLED = true;
 
 export function TutorialProvider({ children }) {
   const [enabled, setEnabledState] = useState(DEFAULT_ENABLED);
-  const [hydrated, setHydrated] = useState(false); // <-- block seeding until true
+  const [hydrated, setHydrated] = useState(false); // block seeding until true
 
   // engine state
   const [running, setRunning] = useState(false);
   const [currentScreen, setCurrentScreen] = useState(null);
   const [currentStep, setCurrentStep] = useState(null); // {id,screen,anchorId,textKey,prefer}
-  const queueRef = useRef([]);     // FIFO queue of steps
-  const startedRef = useRef(false); // first-run seeding guard
+  const queueRef = useRef([]);     // remaining steps
+  const startedRef = useRef(false);
 
   // anchors
   const anchorsRef = useRef(new Map()); // id -> {x,y,width,height}
   const [anchorVersion, setAnchorVersion] = useState(0);
 
-  // overlay derived
+  // overlay state
   const [overlayVisible, setOverlayVisible] = useState(false);
   const [overlayText, setOverlayText] = useState('');
   const [overlayTarget, setOverlayTarget] = useState(null);
-  const [overlayPrefer, setOverlayPrefer] = useState(null); // 'above' | 'below' | 'right' | 'left' | null
+  const [overlayPrefer, setOverlayPrefer] = useState(null);
 
   /** ---------- hydrate "enabled" from server once ---------- */
   useEffect(() => {
@@ -40,22 +42,13 @@ export function TutorialProvider({ children }) {
     (async () => {
       try {
         const token = await SecureStore.getItemAsync('token');
-        if (!token) {
-          // No token — default to current local value and mark hydrated
-          if (!cancelled) setHydrated(true);
-          return;
-        }
+        if (!token) { if (!cancelled) setHydrated(true); return; }
         const api = axios.create({ baseURL: API_BASE_URL });
         const res = await api.get('/settings', { headers: { Authorization: `Bearer ${token}` } });
         const s = res.data?.settings || res.data || {};
         const serverEnabled = typeof s.tutorial_enabled === 'boolean' ? s.tutorial_enabled : DEFAULT_ENABLED;
-
-        if (!cancelled) {
-          setEnabledState(!!serverEnabled);
-          setHydrated(true);
-        }
+        if (!cancelled) { setEnabledState(!!serverEnabled); setHydrated(true); }
       } catch {
-        // If fetch fails, just mark hydrated to avoid blocking; keep current local value
         if (!cancelled) setHydrated(true);
       }
     })();
@@ -64,21 +57,20 @@ export function TutorialProvider({ children }) {
 
   /** ---------- default flow (seeded on first start) ---------- */
   const DEFAULT_FLOW = useRef([
-    { id: 'wardrobe:add',    screen: 'Wardrobe',       anchorId: 'wardrobe:addItem',   textKey: 'tutorial.choosePhoto',  prefer: 'below' },
-    { id: 'wardrobe:type',   screen: 'Wardrobe',       anchorId: 'wardrobe:typePicker',textKey: 'tutorial.pickType',     prefer: 'above' },
-    { id: 'additem:colors',  screen: 'AddItemDetails', anchorId: 'additem:colors',     textKey: 'tutorial.chooseTags',   prefer: 'above' },
-    // { id: 'wardrobe:profile', screen: 'Wardrobe',    anchorId: 'nav:profile',        textKey: 'tutorial.gotoProfile',  prefer: 'above' },
-    { id: 'profile:create',  screen: 'Profile',        anchorId: 'profile:createLook', textKey: 'tutorial.createLook',   prefer: 'below' },
-    { id: 'create:addPhoto', screen: 'CreateLook',     anchorId: 'create:addPhoto',    textKey: 'tutorial.addMyPhoto',   prefer: 'below' },
+    { id: 'wardrobe:add',    screen: 'Wardrobe',       anchorId: 'wardrobe:addItem',    textKey: 'tutorial.choosePhoto',  prefer: 'below' },
+    { id: 'wardrobe:type',   screen: 'Wardrobe',       anchorId: 'wardrobe:typePicker', textKey: 'tutorial.pickType',     prefer: 'above' },
+    { id: 'additem:colors',  screen: 'AddItemDetails', anchorId: 'additem:colors',      textKey: 'tutorial.chooseTags',   prefer: 'above' },
+    { id: 'wardrobe:profile', screen: 'Wardrobe',    anchorId: 'nav:profile',        textKey: 'tutorial.gotoProfile',  prefer: 'above' },
+    { id: 'profile:create',  screen: 'Profile',        anchorId: 'profile:createLook',  textKey: 'tutorial.createLook',   prefer: 'below' },
+    { id: 'create:addPhoto', screen: 'CreateLook',     anchorId: 'create:addPhoto',     textKey: 'tutorial.addMyPhoto',   prefer: 'below' },
   ]);
 
   /** ---------- core helpers ---------- */
   const applyEnabled = useCallback((val) => {
     const on = !!val;
     setEnabledState(on);
-
     if (!on) {
-      // Hard stop: clear everything and prevent immediate reseed
+      // Full stop; do NOT reseed until next Landing‑gated start
       queueRef.current = [];
       setCurrentStep(null);
       setOverlayVisible(false);
@@ -97,15 +89,20 @@ export function TutorialProvider({ children }) {
     setCurrentScreen(prev => (prev === screenName ? prev : screenName));
   }, []);
 
-  /** Start once and seed the default flow on first call */
+  /** Start once and seed the default flow ONLY after Landing closes this launch */
   const startIfEnabled = useCallback(() => {
-    // DO NOT seed until we've hydrated from server
     if (!hydrated) return;
-    if (!enabled) return;
+    // If we're still inside the one-time window but tutorial is OFF,
+    // consume the window so it cannot auto-start later in this launch.
+    if (!enabled) {
+      if (canAutoStartTutorial()) consumeTutorialStartWindow();
+      return;
+    }
+    if (!canAutoStartTutorial()) return; // not in the allowed window
+    consumeTutorialStartWindow();
 
     if (!startedRef.current) {
       startedRef.current = true;
-
       const flow = DEFAULT_FLOW.current.slice();
       if (flow.length) {
         const [head, ...rest] = flow;
@@ -118,7 +115,7 @@ export function TutorialProvider({ children }) {
     setRunning(true);
   }, [enabled, hydrated]);
 
-  /** Show a specific step immediately */
+  /** Show a specific step immediately (only while running) */
   const setNext = useCallback(({ anchorId, textKey, screen, prefer }) => {
     if (!ensureRunning()) return;
     setCurrentStep({
@@ -130,7 +127,7 @@ export function TutorialProvider({ children }) {
     });
   }, [currentScreen, ensureRunning]);
 
-  /** Queue steps right after current (or start immediately if idle) */
+  /** Queue steps to the front (only while running) */
   const queueFront = useCallback((steps) => {
     if (!steps || steps.length === 0) return;
     if (!ensureRunning()) return;
@@ -206,11 +203,11 @@ export function TutorialProvider({ children }) {
     next,
     complete,
     enabled,
-    setEnabled: applyEnabled,     // expose smart setter
+    setEnabled: applyEnabled,
     registerAnchor,
     isEnabled: () => enabled,
     isRunning: () => running,
-    isHydrated: () => hydrated,   // optional if you want screens to know
+    isHydrated: () => hydrated,
   }), [onScreen, startIfEnabled, setNext, queueFront, next, complete, enabled, registerAnchor, running, applyEnabled, hydrated]);
 
   return (
@@ -241,7 +238,6 @@ function CoachOverlay({ visible, textKey, target, prefer, onNext, onClose }) {
   const guessH = 72;
   const guessW = 200;
 
-  // Compute bubble position + arrow based on "prefer"
   let bubbleTop, bubbleLeft, arrowStyle;
 
   if (prefer === 'right' || prefer === 'left') {
@@ -326,7 +322,6 @@ function CoachOverlay({ visible, textKey, target, prefer, onNext, onClose }) {
   );
 }
 
-/** Wrap any clickable target with <CoachMark id="..."> */
 export function CoachMark({ id, children }) {
   const { registerAnchor } = useTutorial() || {};
   const ref = React.useRef(null);
