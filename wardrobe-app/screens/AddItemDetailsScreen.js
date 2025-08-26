@@ -7,7 +7,6 @@ import {
 import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import { API_BASE_URL } from '../api/config';
-import { extractSync } from '../api/ai';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { useFocusEffect } from '@react-navigation/native';
 import { CoachMark, useTutorial } from '../tutorial/TutorialProvider';
@@ -113,13 +112,17 @@ export default function AddItemScreen({ navigation, route }) {
            && (selected.color || []).length <= 2;
   }, [selected]);
 
+  // Reverted: direct POST to your backend; backend now echoes image while GPT is disabled
   const retryExtraction = async () => {
     try {
       setExtracting(true);
-      const { imageUrl: newUrl } = await extractSync({
-        imageUrl: heroUrl,
-        itemType: initialType,
-      });
+      const token = await SecureStore.getItemAsync('token');
+      const res = await api.post(
+        '/extract',
+        { imageUrl: heroUrl, itemType: initialType },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const newUrl = res.data?.imageUrl;
       if (!newUrl) throw new Error('No imageUrl returned from extractor');
       setHeroUrl(newUrl);
       Alert.alert(t('addItem.extractUpdatedTitle'), t('addItem.extractUpdatedBody'));
@@ -151,14 +154,13 @@ export default function AddItemScreen({ navigation, route }) {
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
 
-      // Queue Step 4: point at the Profile tab once we're back on Wardrobe
       try {
         if (tutorial?.isRunning?.()) {
           tutorial.queueFront?.([
             {
               screen: 'Wardrobe',
               anchorId: 'nav:profile',
-              textKey: 'tutorial.gotoProfile', // add this i18n key if missing
+              textKey: 'tutorial.gotoProfile',
               prefer: 'above',
             },
           ]);
@@ -210,7 +212,7 @@ export default function AddItemScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
-      {/* Header with back arrow (no alert) */}
+      {/* Header with back arrow */}
       <View
         style={{
           flexDirection: 'row',
