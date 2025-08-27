@@ -1,8 +1,9 @@
 // screens/WardrobeScreen.js
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import {
-  SafeAreaView, StatusBar, View, Text, FlatList, Image, Button, Alert, ActivityIndicator, Pressable,
-  Platform, Modal, TouchableOpacity, TextInput, ScrollView, InteractionManager, Dimensions, PanResponder
+  SafeAreaView, StatusBar, View, Text, FlatList, Image, Alert, ActivityIndicator,
+  Pressable, Platform, Modal, TouchableOpacity, TextInput, ScrollView,
+  InteractionManager, Dimensions, PanResponder, ImageBackground
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,6 +14,8 @@ import axios from 'axios';
 import { API_BASE_URL } from '../api/config';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { CoachMark, useTutorial } from '../tutorial/TutorialProvider';
+import { useTheme } from '../ui/theme';
+import TypeIcon from '../components/TypeIcon';
 
 const api = axios.create({ baseURL: API_BASE_URL });
 
@@ -24,22 +27,20 @@ const MASTER_TYPES = [
 ];
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-const PAGE_SIDE_PADDING = 12;
-const COLS = 2;
-const ROW_GAP = 12;
-const TILE_W = Math.floor((SCREEN_W - PAGE_SIDE_PADDING * 2 - ROW_GAP) / COLS);
 
-// swipe thresholds
+/** Layout */
+const SIDE_PADDING = 16;
+const COLS = 2;
+const COL_GAP = 14;
+const ROW_GAP = 18;
+const TILE_W = Math.round((SCREEN_W - SIDE_PADDING * 2 - COL_GAP) / COLS);
+
 const SWIPE_DX = 40;
 const SWIPE_VX = 0.35;
 
-/** ---------------- robust upload helpers ---------------- */
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
-// 2 retries (3 total attempts) with 30s timeout each
 async function postWithRetry(url, data, config, { retries = 2, timeout = 30000 } = {}) {
   let attempt = 0;
-  // ensure axios respects multipart body without transforms
   const baseCfg = {
     ...config,
     timeout,
@@ -47,44 +48,31 @@ async function postWithRetry(url, data, config, { retries = 2, timeout = 30000 }
     headers: { ...(config?.headers || {}), 'Content-Type': 'multipart/form-data' },
     transformRequest: [(d) => d],
   };
-
   while (true) {
-    try {
-      return await api.post(url, data, baseCfg);
-    } catch (err) {
+    try { return await api.post(url, data, baseCfg); }
+    catch (err) {
       const isTimeout = err.code === 'ECONNABORTED' || /timeout/i.test(err.message || '');
       const isNetErr  = err.message === 'Network Error';
       const status    = err?.response?.status;
-
-      // Retry on timeouts, generic network errors, and 5xx
       if (attempt < retries && (isTimeout || isNetErr || (status >= 500 && status <= 599))) {
-        attempt += 1;
-        // exponential backoff: 800ms, 1600ms, ...
-        await sleep(800 * attempt);
-        continue;
+        attempt += 1; await sleep(800 * attempt); continue;
       }
       throw err;
     }
   }
 }
-/** ------------------------------------------------------- */
 
 export default function WardrobeScreen({ navigation }) {
   const tutorial = useTutorial();
-  useFocusEffect(useCallback(() => {
-    tutorial.onScreen('Wardrobe');
-    tutorial.startIfEnabled();
-  }, [])); // eslint-disable-line
-
+  useFocusEffect(useCallback(() => { tutorial.onScreen('Wardrobe'); tutorial.startIfEnabled(); }, []));
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
+  const { colors } = useTheme();
 
   const typeLabel = (key) => {
     const k = String(key).toLowerCase();
     const val = t(`types.${k}`);
-    return val && val !== `types.${k}`
-      ? val
-      : k.charAt(0).toUpperCase() + k.slice(1);
+    return val && val !== `types.${k}` ? val : k.charAt(0).toUpperCase() + k.slice(1);
   };
 
   const [items, setItems] = useState([]);
@@ -105,8 +93,7 @@ export default function WardrobeScreen({ navigation }) {
   const setActiveIndex = (updater) => {
     _setActiveIndex((curr) => {
       const next = typeof updater === 'function' ? updater(curr) : updater;
-      activeIndexRef.current = next;
-      return next;
+      activeIndexRef.current = next; return next;
     });
   };
 
@@ -116,9 +103,7 @@ export default function WardrobeScreen({ navigation }) {
     try {
       setLoading(true);
       const token = await getToken();
-      const res = await api.get('/wardrobe', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await api.get('/wardrobe', { headers: { Authorization: `Bearer ${token}` } });
       const all = res.data?.items || res.data || [];
       setItems(all.filter(it => (it.item_type || it.itemType) !== 'profile'));
     } catch (e) {
@@ -143,7 +128,6 @@ export default function WardrobeScreen({ navigation }) {
   const typeList = useMemo(() => Object.keys(grouped).sort(), [grouped]);
   const pages = useMemo(() => ['all', ...typeList], [typeList]);
 
-  // Clamp activeIndex if pages length changes
   useEffect(() => {
     setActiveIndex((curr) => Math.max(0, Math.min(curr, Math.max(0, pages.length - 1))));
   }, [pages.length]);
@@ -152,8 +136,7 @@ export default function WardrobeScreen({ navigation }) {
     setActiveIndex((curr) => {
       const max = Math.max(0, pages.length - 1);
       const clamped = Math.max(0, Math.min(nextIndex, max));
-      if (clamped === curr) return curr;
-      return clamped;
+      return clamped === curr ? curr : clamped;
     });
   }, [pages.length]);
 
@@ -170,14 +153,8 @@ export default function WardrobeScreen({ navigation }) {
     goToType(exact || partial || 'all');
   }, [searchQuery, pages, goToType]);
 
-  const afterInteractions = () =>
-    new Promise(r => InteractionManager.runAfterInteractions(r));
-
-  // Open the modal only (do not schedule the tutorial here; do it onShow)
-  const askTypeThenUpload = () => {
-    setTypeSearch('');
-    setTypeModalOpen(true);
-  };
+  const afterInteractions = () => new Promise(r => InteractionManager.runAfterInteractions(r));
+  const askTypeThenUpload = () => { setTypeSearch(''); setTypeModalOpen(true); };
 
   const doPickAndUpload = async (chosenType) => {
     if (!chosenType || isPicking || isUploading) return;
@@ -188,9 +165,7 @@ export default function WardrobeScreen({ navigation }) {
 
       const mediaType = ImagePicker.MediaType?.Images ?? ImagePicker.MediaTypeOptions.Images;
       const picked = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: mediaType,
-        // slightly lower quality to avoid giant payloads that can timeout on mobile networks
-        quality: 0.8,
+        mediaTypes: mediaType, quality: 0.8,
         presentationStyle: Platform.OS === 'ios' ? 'fullScreen' : undefined,
         allowsMultipleSelection: false,
       });
@@ -207,12 +182,7 @@ export default function WardrobeScreen({ navigation }) {
 
       const token = await getToken();
       setIsUploading(true);
-
-      // ---- robust post with retries & timeout ----
-      const uploadRes = await postWithRetry('/upload', form, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
+      const uploadRes = await postWithRetry('/upload', form, { headers: { Authorization: `Bearer ${token}` } });
       const { image_url, item_type, url, type: detected } = uploadRes.data || {};
       const imageUrl = image_url || url;
       const finalType = (item_type || detected || chosenType);
@@ -220,12 +190,10 @@ export default function WardrobeScreen({ navigation }) {
       navigation.navigate('AddItemDetails', { imageUrl, initialType: finalType });
     } catch (e) {
       console.log('upload failed:', e?.response?.data || e.message);
-      const msg =
-        e?.response?.data?.message ||
+      const msg = e?.response?.data?.message ||
         (e?.message === 'Network Error'
           ? t('common.networkIssue', 'Network issue. Please check your connection and try again.')
-          : e?.message) ||
-        t('common.tryAgain');
+          : e?.message) || t('common.tryAgain');
       Alert.alert(t('common.uploadFailed'), msg);
     } finally {
       setIsPicking(false);
@@ -236,128 +204,142 @@ export default function WardrobeScreen({ navigation }) {
 
   const handleModalDismiss = async () => {
     if (!pendingType) return;
-    await afterInteractions();
-    await new Promise(r => setTimeout(r, 350));
-    try { await doPickAndUpload(pendingType); }
-    finally { setPendingType(null); }
+    await afterInteractions(); await new Promise(r => setTimeout(r, 350));
+    try { await doPickAndUpload(pendingType); } finally { setPendingType(null); }
   };
 
   useEffect(() => {
     if (Platform.OS === 'android' && !typeModalOpen && pendingType) {
       (async () => {
-        await afterInteractions();
-        await new Promise(r => setTimeout(r, 150));
-        await doPickAndUpload(pendingType);
-        setPendingType(null);
+        await afterInteractions(); await new Promise(r => setTimeout(r, 150));
+        await doPickAndUpload(pendingType); setPendingType(null);
       })();
     }
   }, [typeModalOpen, pendingType]);
 
+  /** Grid tile */
   const GridItem = ({ uri, onPress, onLongPress }) => (
     <TouchableOpacity
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={400}
+      activeOpacity={0.9}
       style={{
         width: TILE_W,
         height: TILE_W,
-        borderRadius: 12,
+        borderRadius: 16,
         overflow: 'hidden',
-        backgroundColor: '#eee',
-        marginBottom: ROW_GAP,
+        backgroundColor: colors.surface,
+        borderWidth: 1,
+        borderColor: colors.hairline,
+        shadowColor: colors.shadow,
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 4 },
+        elevation: 3,
       }}
-      activeOpacity={0.85}
     >
       <Image source={{ uri }} style={{ width: '100%', height: '100%' }} />
     </TouchableOpacity>
   );
 
-  // PanResponder that always reads the latest index and goToIndex
+  /** Swipe between pages */
   const pan = React.useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => false,
     onStartShouldSetPanResponderCapture: () => false,
     onMoveShouldSetPanResponder: (_e, g) => {
-      const ax = Math.abs(g.dx), ay = Math.abs(g.dy);
-      return ax > 12 && ax > ay * 1.2;
+      const ax = Math.abs(g.dx), ay = Math.abs(g.dy); return ax > 12 && ax > ay * 1.2;
     },
     onMoveShouldSetPanResponderCapture: (_e, g) => {
-      const ax = Math.abs(g.dx), ay = Math.abs(g.dy);
-      return ax > 12 && ax > ay * 1.2;
+      const ax = Math.abs(g.dx), ay = Math.abs(g.dy); return ax > 12 && ax > ay * 1.2;
     },
     onPanResponderTerminationRequest: () => false,
     onPanResponderRelease: (_e, g) => {
       const idx = activeIndexRef.current;
-      if (g.dx <= -SWIPE_DX || g.vx <= -SWIPE_VX) {
-        goToIndex(idx + 1);
-      } else if (g.dx >= SWIPE_DX || g.vx >= SWIPE_VX) {
-        goToIndex(idx - 1);
-      }
+      if (g.dx <= -SWIPE_DX || g.vx <= -SWIPE_VX) { goToIndex(idx + 1); }
+      else if (g.dx >= SWIPE_DX || g.vx >= SWIPE_VX) { goToIndex(idx - 1); }
     },
   }), [goToIndex]);
 
   const topInset = (Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0) + 18;
 
-  // derive data once from activeIndex
   const activeKey = pages[activeIndex] || 'all';
   const dataForActive = activeKey === 'all' ? items : (grouped[activeKey] || []);
 
-  /** ------- Tabs autoscroll state/refs ------- */
+  /** Tabs state + centering logic */
   const tabsRef = useRef(null);
-  const tabLayoutsRef = useRef({}); // { [index]: {x, width} }
+  const tabLayoutsRef = useRef({});
   const [tabsContentW, setTabsContentW] = useState(0);
+  const didMountTabs = useRef(false);
+  const lastTabsNode = useRef(null);
 
-  // center (or clamp) the active tab inside the horizontal ScrollView
   useEffect(() => {
     const layout = tabLayoutsRef.current[activeIndex];
-    if (!layout || !tabsRef.current) return;
+    const node = tabsRef.current;
+    if (!layout || !node) return;
+
+    const isNewInstance = node !== lastTabsNode.current;
+    if (isNewInstance) {
+      lastTabsNode.current = node;
+      didMountTabs.current = false;
+    }
 
     const desiredCenterX = layout.x + layout.width / 2;
-    const targetX = Math.max(
-      0,
-      Math.min(
-        desiredCenterX - SCREEN_W / 2,
-        Math.max(0, tabsContentW - SCREEN_W)
-      )
-    );
+    const targetX = Math.max(0, Math.min(desiredCenterX - SCREEN_W / 2, Math.max(0, tabsContentW - SCREEN_W)));
+    node.scrollTo({ x: targetX, animated: didMountTabs.current });
+    if (!didMountTabs.current) didMountTabs.current = true;
+  }, [activeIndex, tabsContentW]);
 
-    tabsRef.current.scrollTo({ x: targetX, animated: true });
-  }, [activeIndex, tabsContentW, pages.length]);
-
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
-      {/* Top controls */}
-      <View style={{ paddingTop: topInset, paddingHorizontal: PAGE_SIDE_PADDING }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+  /** Header block (scrolls away with content) */
+  const HeaderBlock = React.memo(function HeaderBlockComponent() {
+    return (
+      <View style={{ paddingTop: topInset }}>
+        {/* Add / Search */}
+        <View style={{ paddingHorizontal: SIDE_PADDING, flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
           <CoachMark id="wardrobe:addItem">
             <TouchableOpacity
               onPress={askTypeThenUpload}
-              style={{ backgroundColor: '#1976D2', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8 }}
               activeOpacity={0.9}
+              style={{
+                backgroundColor: colors.primary,
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                borderRadius: 14,
+                shadowColor: colors.shadow,
+                shadowOpacity: 0.18,
+                shadowRadius: 10,
+                shadowOffset: { width: 0, height: 6 },
+                elevation: 4,
+              }}
             >
-              <Text style={{ color: '#fff', fontWeight: '600' }}>{t('wardrobe.addItem')}</Text>
+              <Text style={{ color: '#fff', fontWeight: '700' }}>{t('wardrobe.addItem')}</Text>
             </TouchableOpacity>
           </CoachMark>
           <View style={{ flex: 1 }} />
           <TouchableOpacity
             onPress={() => setSearchModalOpen(true)}
-            style={{ width: 42, height: 42, borderRadius: 8, borderWidth: 1, borderColor: '#ccc', alignItems: 'center', justifyContent: 'center' }}
-            activeOpacity={0.8}
+            style={{
+              width: 44, height: 44, borderRadius: 12, borderWidth: 1, borderColor: colors.hairline,
+              alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface,
+            }}
+            activeOpacity={0.85}
             accessibilityLabel={t('common.search')}
           >
             <Text style={{ fontSize: 20 }}>🔍</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Tabs (auto-centering active) */}
+        {/* Tabs */}
         <ScrollView
           ref={tabsRef}
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 6 }}
+          contentContainerStyle={{ paddingHorizontal: SIDE_PADDING, paddingBottom: 8 }}
           onContentSizeChange={(w) => setTabsContentW(w)}
         >
           {pages.map((tpe, i) => {
             const active = i === activeIndex;
+            const label = tpe === 'all' ? t('wardrobe.all') : typeLabel(tpe);
             return (
               <TouchableOpacity
                 key={tpe}
@@ -366,32 +348,68 @@ export default function WardrobeScreen({ navigation }) {
                   tabLayoutsRef.current[i] = { x, width };
                 }}
                 onPress={() => goToIndex(i)}
-                style={{ marginRight: 18, alignItems: 'center' }}
+                activeOpacity={0.9}
+                style={{
+                  marginRight: 12,
+                  paddingVertical: 8,
+                  paddingHorizontal: 12,
+                  borderRadius: 14,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: active ? colors.chipActiveBg : colors.chipBg,
+                  borderWidth: 1,
+                  borderColor: active ? 'transparent' : colors.hairline,
+                }}
               >
-                <Text style={{ fontSize: 16, fontWeight: active ? '700' : '600', color: active ? '#000' : '#666' }}>
-                  {tpe === 'all' ? t('wardrobe.all') : typeLabel(tpe)}
+                <TypeIcon type={tpe} color={active ? colors.chipActiveText : colors.textMuted} />
+                <Text
+                  style={{
+                    marginLeft: 8,
+                    fontSize: 14,
+                    fontWeight: active ? '800' : '600',
+                    color: active ? colors.chipActiveText : colors.text,
+                  }}
+                >
+                  {label}
                 </Text>
-                <View style={{ height: 3, marginTop: 6, width: active ? 22 : 0, backgroundColor: '#1976D2', borderRadius: 3 }} />
               </TouchableOpacity>
             );
           })}
         </ScrollView>
-      </View>
 
-      {/* Content (single list that changes with activeIndex) + swipe layer */}
-      <View style={{ flex: 1 }} {...pan.panHandlers}>
-        {loading ? (
-          <View style={{ flex: 1, justifyContent: 'center' }}><ActivityIndicator /></View>
-        ) : (
-          <View style={{ flex: 1, paddingHorizontal: PAGE_SIDE_PADDING }}>
-            <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 10 }}>
-              {activeKey === 'all' ? t('wardrobe.all') : typeLabel(activeKey)}
-            </Text>
+        {/* Section title */}
+        <Text style={{ fontSize: 22, fontWeight: '800', color: colors.text, paddingHorizontal: SIDE_PADDING, marginBottom: 10 }}>
+          {activeKey === 'all' ? t('wardrobe.all') : typeLabel(activeKey)}
+        </Text>
+      </View>
+    );
+  });
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+      {/* Pattern PNG behind everything (tiles with repeat) */}
+      <ImageBackground
+        source={require('../assets/patterns/light-paper.png')}
+        style={{ flex: 1 }}
+        resizeMode="repeat"
+      >
+        <View style={{ flex: 1 }} {...pan.panHandlers}>
+          {loading ? (
+            <View style={{ flex: 1, justifyContent: 'center' }}><ActivityIndicator /></View>
+          ) : (
             <FlatList
               data={dataForActive}
               keyExtractor={(it) => String(it.id || it.image_url || it.imageUrl)}
               numColumns={COLS}
-              columnWrapperStyle={{ justifyContent: 'space-between' }}
+              ListHeaderComponent={<HeaderBlock />}
+              ListFooterComponent={<View style={{ height: BOTTOM_NAV_HEIGHT + insets.bottom + 12 }} />}
+              showsVerticalScrollIndicator={false}
+
+              // Full-width content with consistent horizontal/vertical gaps
+              contentContainerStyle={{ paddingBottom: 0 }}
+              columnWrapperStyle={{ paddingHorizontal: SIDE_PADDING, columnGap: COL_GAP }}
+              ItemSeparatorComponent={() => <View style={{ height: ROW_GAP }} />}
+
               renderItem={({ item }) => (
                 <GridItem
                   uri={item.image_url || item.imageUrl || item.url}
@@ -429,155 +447,152 @@ export default function WardrobeScreen({ navigation }) {
                   }}
                 />
               )}
-              contentContainerStyle={{ paddingBottom: BOTTOM_NAV_HEIGHT + insets.bottom + 12 }}
             />
-          </View>
-        )}
-      </View>
+          )}
+        </View>
 
-      {/* Bottom Menu */}
-      <BottomNav navigation={navigation} active="wardrobe" />
+        <BottomNav navigation={navigation} active="wardrobe" />
 
-      {/* Upload type picker */}
-      <Modal
-        visible={typeModalOpen}
-        animationType="slide"
-        transparent
-        onDismiss={handleModalDismiss}
-        onRequestClose={() => setTypeModalOpen(false)}
-        onShow={() => {
-          if (tutorial?.isRunning?.()) {
-            setTimeout(() => {
-              tutorial.setNext?.({
-                anchorId: 'wardrobe:typePicker',
-                textKey: 'tutorial.pickType',
-                screen: 'Wardrobe',
-                prefer: 'above',
-              });
-            }, 250);
-          }
-        }}
-      >
-        {/* Backdrop that closes the sheet */}
-        <Pressable
-          onPress={() => setTypeModalOpen(false)}
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }}
+        {/* Upload type picker */}
+        <Modal
+          visible={typeModalOpen}
+          animationType="slide"
+          transparent
+          onDismiss={handleModalDismiss}
+          onRequestClose={() => setTypeModalOpen(false)}
+          onShow={() => {
+            if (tutorial?.isRunning?.()) {
+              setTimeout(() => {
+                tutorial.setNext?.({
+                  anchorId: 'wardrobe:typePicker',
+                  textKey: 'tutorial.pickType',
+                  screen: 'Wardrobe',
+                  prefer: 'above',
+                });
+              }, 250);
+            }
+          }}
         >
-          {/* Stop propagation for taps inside the sheet */}
-          <Pressable onPress={() => {}} style={{ width: '100%' }}>
-            <View
-              style={{
-                backgroundColor: '#fff',
-                borderTopLeftRadius: 16,
-                borderTopRightRadius: 16,
-                height: Math.round(SCREEN_H * 0.80),
-                paddingTop: 8,
-                paddingHorizontal: 16,
-                paddingBottom: insets?.bottom ?? 8,
-              }}
-            >
-              {/* Grabber */}
-              <View style={{ alignItems: 'center', paddingVertical: 6 }}>
-                <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: '#ddd' }} />
-              </View>
-
-              {/* Title + X */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                <Text style={{ fontSize: 18, fontWeight: '600', flex: 1 }}>
-                  {t('wardrobe.pickType')}
-                </Text>
-                <TouchableOpacity
-                  onPress={() => setTypeModalOpen(false)}
-                  hitSlop={{ top: 8, left: 8, right: 8, bottom: 8 }}
-                  accessibilityLabel={t('common.close')}
-                >
-                  <Text style={{ fontSize: 22 }}>✕</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Search */}
-              <TextInput
-                placeholder={t('wardrobe.searchTypesPlaceholder')}
-                value={typeSearch}
-                onChangeText={setTypeSearch}
+          <Pressable
+            onPress={() => setTypeModalOpen(false)}
+            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }}
+          >
+            <Pressable onPress={() => {}} style={{ width: '100%' }}>
+              <View
                 style={{
-                  height: 36,
-                  borderWidth: 1,
-                  borderColor: '#ccc',
-                  borderRadius: 8,
-                  paddingHorizontal: 10,
-                  marginBottom: 10,
-                }}
-              />
-
-              {/* List fills available space */}
-              <View style={{ flex: 1 }}>
-                <CoachMark id="wardrobe:typePicker">
-                  <FlatList
-                    data={MASTER_TYPES.filter(tp =>
-                      tp.includes(typeSearch.trim().toLowerCase())
-                    )}
-                    keyExtractor={(tp) => tp}
-                    keyboardShouldPersistTaps="handled"
-                    renderItem={({ item }) => (
-                      <TouchableOpacity
-                        onPress={() => { setPendingType(item); setTypeModalOpen(false); }}
-                        style={{ paddingVertical: 12 }}
-                      >
-                        <Text style={{ fontSize: 16 }}>{typeLabel(item)}</Text>
-                      </TouchableOpacity>
-                    )}
-                    ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: '#eee' }} />}
-                    contentContainerStyle={{ paddingBottom: 8 }}
-                  />
-                </CoachMark>
-              </View>
-
-              {/* Close button */}
-              <TouchableOpacity
-                onPress={() => setTypeModalOpen(false)}
-                activeOpacity={0.85}
-                style={{
-                  height: 44,
-                  borderRadius: 10,
-                  backgroundColor: '#1976D2',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginTop: 8,
+                  backgroundColor: colors.surface,
+                  borderTopLeftRadius: 16,
+                  borderTopRightRadius: 16,
+                  height: Math.round(SCREEN_H * 0.80),
+                  paddingTop: 8,
+                  paddingHorizontal: 16,
+                  paddingBottom: insets?.bottom ?? 8,
+                  borderTopWidth: 1,
+                  borderColor: colors.hairline,
                 }}
               >
-                <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>
-                  {t('common.close')}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+                <View style={{ alignItems: 'center', paddingVertical: 6 }}>
+                  <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: colors.hairline }} />
+                </View>
 
-      {/* Search modal */}
-      <Modal visible={searchModalOpen} transparent animationType="fade" onRequestClose={() => setSearchModalOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.25)', justifyContent: 'center', padding: 24 }}>
-          <View style={{ backgroundColor: '#fff', borderRadius: 12, padding: 16 }}>
-            <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8 }}>{t('wardrobe.searchByType')}</Text>
-            <TextInput
-              placeholder={t('wardrobe.searchExample')}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              autoFocus
-              style={{ height: 42, borderWidth: 1, borderColor: '#ccc', borderRadius: 8, paddingHorizontal: 12, marginBottom: 12 }}
-            />
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-              <TouchableOpacity onPress={() => { setSearchQuery(''); setSearchModalOpen(false); }}>
-                <Text style={{ paddingVertical: 8, paddingHorizontal: 12, marginRight: 8 }}>{t('common.cancel')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setSearchModalOpen(false)}>
-                <Text style={{ paddingVertical: 8, paddingHorizontal: 12, color: '#1976D2', fontWeight: '600' }}>{t('common.done')}</Text>
-              </TouchableOpacity>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                  <Text style={{ fontSize: 18, fontWeight: '700', flex: 1, color: colors.text }}>
+                    {t('wardrobe.pickType')}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => setTypeModalOpen(false)}
+                    hitSlop={{ top: 8, left: 8, right: 8, bottom: 8 }}
+                    accessibilityLabel={t('common.close')}
+                  >
+                    <Text style={{ fontSize: 22, color: colors.textMuted }}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <TextInput
+                  placeholder={t('wardrobe.searchTypesPlaceholder')}
+                  placeholderTextColor={colors.textMuted}
+                  value={typeSearch}
+                  onChangeText={setTypeSearch}
+                  style={{
+                    height: 40,
+                    borderWidth: 1,
+                    borderColor: colors.hairline,
+                    backgroundColor: colors.surfaceAlt,
+                    color: colors.text,
+                    borderRadius: 10,
+                    paddingHorizontal: 12,
+                    marginBottom: 10,
+                  }}
+                />
+
+                <View style={{ flex: 1 }}>
+                  <CoachMark id="wardrobe:typePicker">
+                    <FlatList
+                      data={MASTER_TYPES.filter(tp => tp.includes(typeSearch.trim().toLowerCase()))}
+                      keyExtractor={(tp) => tp}
+                      keyboardShouldPersistTaps="handled"
+                      renderItem={({ item }) => (
+                        <TouchableOpacity
+                          onPress={() => { setPendingType(item); setTypeModalOpen(false); }}
+                          style={{ paddingVertical: 12, flexDirection: 'row', alignItems: 'center' }}
+                        >
+                          <TypeIcon type={item} color={colors.textMuted} />
+                          <Text style={{ fontSize: 16, marginLeft: 10, color: colors.text }}>{typeLabel(item)}</Text>
+                        </TouchableOpacity>
+                      )}
+                      ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: colors.hairline }} />}
+                      contentContainerStyle={{ paddingBottom: 8 }}
+                    />
+                  </CoachMark>
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => setTypeModalOpen(false)}
+                  activeOpacity={0.9}
+                  style={{
+                    height: 46, borderRadius: 12, backgroundColor: colors.primary,
+                    alignItems: 'center', justifyContent: 'center', marginTop: 8,
+                    shadowColor: colors.shadow, shadowOpacity: 0.18, shadowRadius: 10,
+                    shadowOffset: { width: 0, height: 6 }, elevation: 4,
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>
+                    {t('common.close')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        {/* Search modal */}
+        <Modal visible={searchModalOpen} transparent animationType="fade" onRequestClose={() => setSearchModalOpen(false)}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.25)', justifyContent: 'center', padding: 24 }}>
+            <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: colors.hairline }}>
+              <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8, color: colors.text }}>{t('wardrobe.searchByType')}</Text>
+              <TextInput
+                placeholder={t('wardrobe.searchExample')}
+                placeholderTextColor={colors.textMuted}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                autoFocus
+                style={{
+                  height: 42, borderWidth: 1, borderColor: colors.hairline, backgroundColor: colors.surfaceAlt,
+                  color: colors.text, borderRadius: 10, paddingHorizontal: 12, marginBottom: 12
+                }}
+              />
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+                <TouchableOpacity onPress={() => { setSearchQuery(''); setSearchModalOpen(false); }}>
+                  <Text style={{ paddingVertical: 8, paddingHorizontal: 12, marginRight: 8, color: colors.textMuted }}>{t('common.cancel')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setSearchModalOpen(false)}>
+                  <Text style={{ paddingVertical: 8, paddingHorizontal: 12, color: colors.primary, fontWeight: '700' }}>{t('common.done')}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      </ImageBackground>
     </SafeAreaView>
   );
 }

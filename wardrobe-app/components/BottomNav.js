@@ -5,109 +5,119 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { CoachMark } from '../tutorial/TutorialProvider';
+import { useTheme } from '../ui/theme';
 
-export const BOTTOM_NAV_HEIGHT = 62;
+export const BOTTOM_NAV_HEIGHT = 64;
 
-const TABS = ['wardrobe', 'profile']; // logical order (left → right)
+const TABS = ['wardrobe', 'profile'];
 
 export default function BottomNav({ navigation, active = 'wardrobe' }) {
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
+  const { colors } = useTheme();
 
   const go = (dest) => {
     if (dest === active) return;
-
     const fromIdx = TABS.indexOf(active);
-    const toIdx   = TABS.indexOf(dest);
-
-    // decide swipe based on relative position
+    const toIdx = TABS.indexOf(dest);
     const animation = toIdx > fromIdx ? 'slide_from_right' : 'slide_from_left';
-    const routeName = dest === 'wardrobe' ? 'Wardrobe' : 'Profile';
-
-    navigation.navigate(routeName, { animation });
+    navigation.navigate(dest === 'wardrobe' ? 'Wardrobe' : 'Profile', { animation });
   };
 
   return (
     <View
       style={{
         position: 'absolute',
-        left: 0,
-        right: 0,
-        bottom: 0,
-        height: BOTTOM_NAV_HEIGHT + insets.bottom,
-        paddingBottom: insets.bottom,
-        backgroundColor: '#fff',
-        borderTopWidth: 1,
-        borderTopColor: '#e5e7eb',
+        left: 12,
+        right: 12,
+        bottom: 12 + insets.bottom / 2,
+        height: BOTTOM_NAV_HEIGHT,
+        borderRadius: 18,
+        backgroundColor: colors.surface,
+        borderWidth: 1,
+        borderColor: colors.hairline,
+        shadowColor: '#000',
+        shadowOpacity: 0.08,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 6 },
+        elevation: 6,
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-around',
+        justifyContent: 'space-between',
+        paddingHorizontal: 18,
       }}
     >
       {/* Wardrobe */}
-      <TouchableOpacity onPress={() => go('wardrobe')} style={{ alignItems: 'center' }} activeOpacity={0.8}>
+      <TouchableOpacity onPress={() => go('wardrobe')} style={{ alignItems: 'center', width: 84 }} activeOpacity={0.85}>
         <Ionicons
           name="shirt-outline"
           size={24}
-          color={active === 'wardrobe' ? '#1976D2' : '#666'}
+          color={active === 'wardrobe' ? colors.primary : colors.textMuted}
         />
         <Text
           style={{
             marginTop: 4,
             fontSize: 12,
-            color: active === 'wardrobe' ? '#1976D2' : '#666',
-            fontWeight: active === 'wardrobe' ? '600' : '400',
+            color: active === 'wardrobe' ? colors.primary : colors.textMuted,
+            fontWeight: active === 'wardrobe' ? '700' : '500',
           }}
         >
           {t('nav.wardrobe')}
         </Text>
       </TouchableOpacity>
 
-      {/* Plus (visual only) */}
-      <View style={{ alignItems: 'center' }}>
+      {/* PRO chip */}
+      <View pointerEvents="none" style={{ alignItems: 'center' }}>
         <View
           style={{
-            width: 40,
             height: 40,
-            borderRadius: 20,
-            backgroundColor: '#FFD54F',
+            paddingHorizontal: 20,
+            borderRadius: 12,
+            backgroundColor: colors.accent, // gold
             alignItems: 'center',
             justifyContent: 'center',
+            borderWidth: 1,
+            borderColor: 'rgba(0,0,0,0.06)',
             shadowColor: '#000',
-            shadowOpacity: 0.12,
-            shadowOffset: { width: 0, height: 2 },
-            shadowRadius: 3,
-            elevation: 2,
+            shadowOpacity: 0.18,
+            shadowOffset: { width: 0, height: 4 },
+            shadowRadius: 8,
+            elevation: 4,
           }}
-          pointerEvents="none"
         >
-          <Ionicons name="add" size={24} color="#333" />
+          <Text
+            style={{
+              fontSize: 14,
+              fontWeight: '800',
+              color: '#333',
+              letterSpacing: 0.4,
+            }}
+          >
+            {t('nav.pro')}
+          </Text>
         </View>
-        <Text style={{ marginTop: 4, fontSize: 12, color: '#999' }}>
-          {t('nav.pro')} {/* keep as "Pro" if you haven’t added this key */}
-        </Text>
       </View>
 
       {/* Profile */}
       <CoachMark id="nav:profile">
-        <TouchableOpacity onPress={() => go('profile')} style={{ alignItems: 'center' }} activeOpacity={0.8}>
+        <TouchableOpacity onPress={() => go('profile')} style={{ alignItems: 'center', width: 84 }} activeOpacity={0.85}>
           <Ionicons
             name="person-circle-outline"
             size={24}
-            color={active === 'profile' ? '#1976D2' : '#666'}
+            color={active === 'profile' ? colors.primary : colors.textMuted}
           />
           <Text
             style={{
-             marginTop: 4,
+              marginTop: 4,
               fontSize: 12,
-              color: active === 'profile' ? '#1976D2' : '#666',
-              fontWeight: active === 'profile' ? '600' : '400',
+              color: active === 'profile' ? colors.primary : colors.textMuted,
+              fontWeight: active === 'profile' ? '700' : '500',
             }}
           >
-            Profile
+            {t('nav.profile', 'Profile')}
           </Text>
         </TouchableOpacity>
-     </CoachMark>
+      </CoachMark>
     </View>
   );
 }
