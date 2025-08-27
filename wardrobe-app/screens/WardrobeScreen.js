@@ -3,8 +3,9 @@ import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import {
   SafeAreaView, StatusBar, View, Text, FlatList, Image, Alert, ActivityIndicator,
   Pressable, Platform, Modal, TouchableOpacity, TextInput, ScrollView,
-  InteractionManager, Dimensions, PanResponder, ImageBackground
+  InteractionManager, Dimensions, PanResponder
 } from 'react-native';
+import { Animated } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -16,6 +17,7 @@ import { useLanguage } from '../i18n/LanguageProvider';
 import { CoachMark, useTutorial } from '../tutorial/TutorialProvider';
 import { useTheme } from '../ui/theme';
 import TypeIcon from '../components/TypeIcon';
+import { ImageBackground } from 'react-native';
 
 const api = axios.create({ baseURL: API_BASE_URL });
 
@@ -237,6 +239,7 @@ export default function WardrobeScreen({ navigation }) {
         shadowRadius: 8,
         shadowOffset: { width: 0, height: 4 },
         elevation: 3,
+        marginBottom: ROW_GAP,
       }}
     >
       <Image source={{ uri }} style={{ width: '100%', height: '100%' }} />
@@ -277,18 +280,13 @@ export default function WardrobeScreen({ navigation }) {
     const layout = tabLayoutsRef.current[activeIndex];
     const node = tabsRef.current;
     if (!layout || !node) return;
-
     const isNewInstance = node !== lastTabsNode.current;
-    if (isNewInstance) {
-      lastTabsNode.current = node;
-      didMountTabs.current = false;
-    }
-
+    if (isNewInstance) { lastTabsNode.current = node; didMountTabs.current = false; }
     const desiredCenterX = layout.x + layout.width / 2;
     const targetX = Math.max(0, Math.min(desiredCenterX - SCREEN_W / 2, Math.max(0, tabsContentW - SCREEN_W)));
     node.scrollTo({ x: targetX, animated: didMountTabs.current });
     if (!didMountTabs.current) didMountTabs.current = true;
-  }, [activeIndex, tabsContentW]);
+  }, [activeIndex, tabsContentW, pages.length]);
 
   /** Header block (scrolls away with content) */
   const HeaderBlock = React.memo(function HeaderBlockComponent() {
@@ -385,214 +383,237 @@ export default function WardrobeScreen({ navigation }) {
     );
   });
 
+  /** ---- Scrolling background pattern (robust for long lists) ---- */
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const [contentH, setContentH] = useState(SCREEN_H);
+  const bgTranslateY = Animated.multiply(scrollY, -1);
+  const BG_BUFFER = 600; // extra height so you never "scroll past" the pattern
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-      {/* Pattern PNG behind everything (tiles with repeat) */}
-      <ImageBackground
-        source={require('../assets/patterns/light-paper.png')}
-        style={{ flex: 1 }}
-        resizeMode="repeat"
+      {/* Always-mounted background layer */}
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          top: 0, left: 0, right: 0,
+          transform: [{ translateY: bgTranslateY }],
+          // Height grows but never shrinks while you scroll/load
+          height: Math.max(contentH + BG_BUFFER, SCREEN_H + BG_BUFFER),
+        }}
       >
-        <View style={{ flex: 1 }} {...pan.panHandlers}>
-          {loading ? (
-            <View style={{ flex: 1, justifyContent: 'center' }}><ActivityIndicator /></View>
-          ) : (
-            <FlatList
-              data={dataForActive}
-              keyExtractor={(it) => String(it.id || it.image_url || it.imageUrl)}
-              numColumns={COLS}
-              ListHeaderComponent={<HeaderBlock />}
-              ListFooterComponent={<View style={{ height: BOTTOM_NAV_HEIGHT + insets.bottom + 12 }} />}
-              showsVerticalScrollIndicator={false}
+        <ImageBackground
+          source={require('../assets/patterns/light-paper.png')}
+          resizeMode="repeat"
+          style={{ flex: 1, width: '100%' }}
+        />
+      </Animated.View>
 
-              // Full-width content with consistent horizontal/vertical gaps
-              contentContainerStyle={{ paddingBottom: 0 }}
-              columnWrapperStyle={{ paddingHorizontal: SIDE_PADDING, columnGap: COL_GAP }}
-              ItemSeparatorComponent={() => <View style={{ height: ROW_GAP }} />}
-
-              renderItem={({ item }) => (
-                <GridItem
-                  uri={item.image_url || item.imageUrl || item.url}
-                  onPress={() =>
-                    navigation.navigate('AddItemDetails', {
-                      itemId: item.id,
-                      imageUrl: item.image_url || item.imageUrl || item.url,
-                      initialType: (item.item_type || item.itemType || 'tshirt').toLowerCase(),
-                      existingTags: item.tags || {},
-                    })
-                  }
-                  onLongPress={() => {
-                    Alert.alert(
-                      t('wardrobe.deleteTitle'),
-                      t('wardrobe.deleteConfirm'),
-                      [
-                        { text: t('common.cancel'), style: 'cancel' },
-                        {
-                          text: t('common.delete'),
-                          style: 'destructive',
-                          onPress: async () => {
-                            try {
-                              const token = await SecureStore.getItemAsync('token');
-                              await api.delete(`/wardrobe/${item.id}`, {
-                                headers: { Authorization: `Bearer ${token}` },
-                              });
-                              fetchWardrobe();
-                            } catch (e) {
-                              Alert.alert(t('wardrobe.deleteFailed'), e?.response?.data?.message || e.message || t('common.tryAgain'));
-                            }
-                          },
+      <View style={{ flex: 1 }} {...pan.panHandlers}>
+        {loading ? (
+          <View style={{ flex: 1, justifyContent: 'center' }}><ActivityIndicator /></View>
+        ) : (
+          <Animated.FlatList
+            data={dataForActive}
+            keyExtractor={(it) => String(it.id || it.image_url || it.imageUrl)}
+            numColumns={COLS}
+            ListHeaderComponent={<HeaderBlock />}
+            ListFooterComponent={<View style={{ height: BOTTOM_NAV_HEIGHT + insets.bottom + 12 }} />}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 0 }}
+            columnWrapperStyle={{ paddingHorizontal: SIDE_PADDING, columnGap: COL_GAP }}
+            ItemSeparatorComponent={() => <View style={{ height: ROW_GAP }} />}
+            renderItem={({ item }) => (
+              <GridItem
+                uri={item.image_url || item.imageUrl || item.url}
+                onPress={() =>
+                  navigation.navigate('AddItemDetails', {
+                    itemId: item.id,
+                    imageUrl: item.image_url || item.imageUrl || item.url,
+                    initialType: (item.item_type || item.itemType || 'tshirt').toLowerCase(),
+                    existingTags: item.tags || {},
+                  })
+                }
+                onLongPress={() => {
+                  Alert.alert(
+                    t('wardrobe.deleteTitle'),
+                    t('wardrobe.deleteConfirm'),
+                    [
+                      { text: t('common.cancel'), style: 'cancel' },
+                      {
+                        text: t('common.delete'),
+                        style: 'destructive',
+                        onPress: async () => {
+                          try {
+                            const token = await SecureStore.getItemAsync('token');
+                            await api.delete(`/wardrobe/${item.id}`, {
+                              headers: { Authorization: `Bearer ${token}` },
+                            });
+                            fetchWardrobe();
+                          } catch (e) {
+                            Alert.alert(t('wardrobe.deleteFailed'), e?.response?.data?.message || e.message || t('common.tryAgain'));
+                          }
                         },
-                      ]
-                    );
-                  }}
-                />
-              )}
-            />
-          )}
-        </View>
-
-        <BottomNav navigation={navigation} active="wardrobe" />
-
-        {/* Upload type picker */}
-        <Modal
-          visible={typeModalOpen}
-          animationType="slide"
-          transparent
-          onDismiss={handleModalDismiss}
-          onRequestClose={() => setTypeModalOpen(false)}
-          onShow={() => {
-            if (tutorial?.isRunning?.()) {
-              setTimeout(() => {
-                tutorial.setNext?.({
-                  anchorId: 'wardrobe:typePicker',
-                  textKey: 'tutorial.pickType',
-                  screen: 'Wardrobe',
-                  prefer: 'above',
-                });
-              }, 250);
-            }
-          }}
-        >
-          <Pressable
-            onPress={() => setTypeModalOpen(false)}
-            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }}
-          >
-            <Pressable onPress={() => {}} style={{ width: '100%' }}>
-              <View
-                style={{
-                  backgroundColor: colors.surface,
-                  borderTopLeftRadius: 16,
-                  borderTopRightRadius: 16,
-                  height: Math.round(SCREEN_H * 0.80),
-                  paddingTop: 8,
-                  paddingHorizontal: 16,
-                  paddingBottom: insets?.bottom ?? 8,
-                  borderTopWidth: 1,
-                  borderColor: colors.hairline,
-                }}
-              >
-                <View style={{ alignItems: 'center', paddingVertical: 6 }}>
-                  <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: colors.hairline }} />
-                </View>
-
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                  <Text style={{ fontSize: 18, fontWeight: '700', flex: 1, color: colors.text }}>
-                    {t('wardrobe.pickType')}
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => setTypeModalOpen(false)}
-                    hitSlop={{ top: 8, left: 8, right: 8, bottom: 8 }}
-                    accessibilityLabel={t('common.close')}
-                  >
-                    <Text style={{ fontSize: 22, color: colors.textMuted }}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <TextInput
-                  placeholder={t('wardrobe.searchTypesPlaceholder')}
-                  placeholderTextColor={colors.textMuted}
-                  value={typeSearch}
-                  onChangeText={setTypeSearch}
-                  style={{
-                    height: 40,
-                    borderWidth: 1,
-                    borderColor: colors.hairline,
-                    backgroundColor: colors.surfaceAlt,
-                    color: colors.text,
-                    borderRadius: 10,
-                    paddingHorizontal: 12,
-                    marginBottom: 10,
-                  }}
-                />
-
-                <View style={{ flex: 1 }}>
-                  <CoachMark id="wardrobe:typePicker">
-                    <FlatList
-                      data={MASTER_TYPES.filter(tp => tp.includes(typeSearch.trim().toLowerCase()))}
-                      keyExtractor={(tp) => tp}
-                      keyboardShouldPersistTaps="handled"
-                      renderItem={({ item }) => (
-                        <TouchableOpacity
-                          onPress={() => { setPendingType(item); setTypeModalOpen(false); }}
-                          style={{ paddingVertical: 12, flexDirection: 'row', alignItems: 'center' }}
-                        >
-                          <TypeIcon type={item} color={colors.textMuted} />
-                          <Text style={{ fontSize: 16, marginLeft: 10, color: colors.text }}>{typeLabel(item)}</Text>
-                        </TouchableOpacity>
-                      )}
-                      ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: colors.hairline }} />}
-                      contentContainerStyle={{ paddingBottom: 8 }}
-                    />
-                  </CoachMark>
-                </View>
-
-                <TouchableOpacity
-                  onPress={() => setTypeModalOpen(false)}
-                  activeOpacity={0.9}
-                  style={{
-                    height: 46, borderRadius: 12, backgroundColor: colors.primary,
-                    alignItems: 'center', justifyContent: 'center', marginTop: 8,
-                    shadowColor: colors.shadow, shadowOpacity: 0.18, shadowRadius: 10,
-                    shadowOffset: { width: 0, height: 6 }, elevation: 4,
-                  }}
-                >
-                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>
-                    {t('common.close')}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </Pressable>
-          </Pressable>
-        </Modal>
-
-        {/* Search modal */}
-        <Modal visible={searchModalOpen} transparent animationType="fade" onRequestClose={() => setSearchModalOpen(false)}>
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.25)', justifyContent: 'center', padding: 24 }}>
-            <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: colors.hairline }}>
-              <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8, color: colors.text }}>{t('wardrobe.searchByType')}</Text>
-              <TextInput
-                placeholder={t('wardrobe.searchExample')}
-                placeholderTextColor={colors.textMuted}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                autoFocus
-                style={{
-                  height: 42, borderWidth: 1, borderColor: colors.hairline, backgroundColor: colors.surfaceAlt,
-                  color: colors.text, borderRadius: 10, paddingHorizontal: 12, marginBottom: 12
+                      },
+                    ]
+                  );
                 }}
               />
-              <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-                <TouchableOpacity onPress={() => { setSearchQuery(''); setSearchModalOpen(false); }}>
-                  <Text style={{ paddingVertical: 8, paddingHorizontal: 12, marginRight: 8, color: colors.textMuted }}>{t('common.cancel')}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setSearchModalOpen(false)}>
-                  <Text style={{ paddingVertical: 8, paddingHorizontal: 12, color: colors.primary, fontWeight: '700' }}>{t('common.done')}</Text>
+            )}
+            onScroll={Animated.event(
+              [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+              { useNativeDriver: true }
+            )}
+            scrollEventThrottle={16}
+            onContentSizeChange={(_w, h) => {
+              // 🔸 only ever grow the background; never shrink mid-render
+              setContentH(prev => Math.max(prev, h));
+            }}
+          />
+        )}
+      </View>
+
+      <BottomNav navigation={navigation} active="wardrobe" />
+
+      {/* Upload type picker */}
+      <Modal
+        visible={typeModalOpen}
+        animationType="slide"
+        transparent
+        onDismiss={handleModalDismiss}
+        onRequestClose={() => setTypeModalOpen(false)}
+        onShow={() => {
+          if (tutorial?.isRunning?.()) {
+            setTimeout(() => {
+              tutorial.setNext?.({
+                anchorId: 'wardrobe:typePicker',
+                textKey: 'tutorial.pickType',
+                screen: 'Wardrobe',
+                prefer: 'above',
+              });
+            }, 250);
+          }
+        }}
+      >
+        <Pressable
+          onPress={() => setTypeModalOpen(false)}
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }}
+        >
+          <Pressable onPress={() => {}} style={{ width: '100%' }}>
+            <View
+              style={{
+                backgroundColor: colors.surface,
+                borderTopLeftRadius: 16,
+                borderTopRightRadius: 16,
+                height: Math.round(SCREEN_H * 0.80),
+                paddingTop: 8,
+                paddingHorizontal: 16,
+                paddingBottom: insets?.bottom ?? 8,
+                borderTopWidth: 1,
+                borderColor: colors.hairline,
+              }}
+            >
+              <View style={{ alignItems: 'center', paddingVertical: 6 }}>
+                <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: colors.hairline }} />
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                <Text style={{ fontSize: 18, fontWeight: '700', flex: 1, color: colors.text }}>
+                  {t('wardrobe.pickType')}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setTypeModalOpen(false)}
+                  hitSlop={{ top: 8, left: 8, right: 8, bottom: 8 }}
+                  accessibilityLabel={t('common.close')}
+                >
+                  <Text style={{ fontSize: 22, color: colors.textMuted }}>✕</Text>
                 </TouchableOpacity>
               </View>
+
+              <TextInput
+                placeholder={t('wardrobe.searchTypesPlaceholder')}
+                placeholderTextColor={colors.textMuted}
+                value={typeSearch}
+                onChangeText={setTypeSearch}
+                style={{
+                  height: 40,
+                  borderWidth: 1,
+                  borderColor: colors.hairline,
+                  backgroundColor: colors.surfaceAlt,
+                  color: colors.text,
+                  borderRadius: 10,
+                  paddingHorizontal: 12,
+                  marginBottom: 10,
+                }}
+              />
+
+              <View style={{ flex: 1 }}>
+                <CoachMark id="wardrobe:typePicker">
+                  <FlatList
+                    data={MASTER_TYPES.filter(tp => tp.includes(typeSearch.trim().toLowerCase()))}
+                    keyExtractor={(tp) => tp}
+                    keyboardShouldPersistTaps="handled"
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        onPress={() => { setPendingType(item); setTypeModalOpen(false); }}
+                        style={{ paddingVertical: 12, flexDirection: 'row', alignItems: 'center' }}
+                      >
+                        <TypeIcon type={item} color={colors.textMuted} />
+                        <Text style={{ fontSize: 16, marginLeft: 10, color: colors.text }}>{typeLabel(item)}</Text>
+                      </TouchableOpacity>
+                    )}
+                    ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: colors.hairline }} />}
+                    contentContainerStyle={{ paddingBottom: 8 }}
+                  />
+                </CoachMark>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => setTypeModalOpen(false)}
+                activeOpacity={0.9}
+                style={{
+                  height: 46, borderRadius: 12, backgroundColor: colors.primary,
+                  alignItems: 'center', justifyContent: 'center', marginTop: 8,
+                  shadowColor: colors.shadow, shadowOpacity: 0.18, shadowRadius: 10,
+                  shadowOffset: { width: 0, height: 6 }, elevation: 4,
+                }}
+              >
+                <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>
+                  {t('common.close')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Search modal */}
+      <Modal visible={searchModalOpen} transparent animationType="fade" onRequestClose={() => setSearchModalOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.25)', justifyContent: 'center', padding: 24 }}>
+          <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: colors.hairline }}>
+            <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8, color: colors.text }}>{t('wardrobe.searchByType')}</Text>
+            <TextInput
+              placeholder={t('wardrobe.searchExample')}
+              placeholderTextColor={colors.textMuted}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoFocus
+              style={{
+                height: 42, borderWidth: 1, borderColor: colors.hairline, backgroundColor: colors.surfaceAlt,
+                color: colors.text, borderRadius: 10, paddingHorizontal: 12, marginBottom: 12
+              }}
+            />
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+              <TouchableOpacity onPress={() => { setSearchQuery(''); setSearchModalOpen(false); }}>
+                <Text style={{ paddingVertical: 8, paddingHorizontal: 12, marginRight: 8, color: colors.textMuted }}>{t('common.cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setSearchModalOpen(false)}>
+                <Text style={{ paddingVertical: 8, paddingHorizontal: 12, color: colors.primary, fontWeight: '700' }}>{t('common.done')}</Text>
+              </TouchableOpacity>
             </View>
           </View>
-        </Modal>
-      </ImageBackground>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
