@@ -50,7 +50,7 @@ export default function BottomNav({ navigation, active = 'wardrobe' }) {
       {/* Wardrobe */}
       <TouchableOpacity onPress={() => go('wardrobe')} style={{ alignItems: 'center', width: 84 }} activeOpacity={0.85}>
         <Ionicons
-          name="shirt-outline"
+          name="grid-outline"
           size={24}
           color={active === 'wardrobe' ? colors.primary : colors.textMuted}
         />
