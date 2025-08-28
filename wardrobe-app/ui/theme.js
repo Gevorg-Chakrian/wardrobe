@@ -8,12 +8,12 @@ export const PALETTES = {
     surfaceAlt: '#F1F2F6',
     text: '#111827',
     textMuted: '#6B7280',
-    primary: '#1F6FEB',      // bright fashion blue
+    primary: '#34D399',      // bright fashion blue
     primaryAlt: '#5AA2FF',
     hairline: '#E5E7EB',
     shadow: '#00000022',
     chipBg: '#F3F6FF',
-    chipActiveBg: '#1F6FEB',
+    chipActiveBg: '#34D399',
     chipActiveText: '#FFFFFF',
     accent: '#FFD54F',
   },
