@@ -2,8 +2,8 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import {
   SafeAreaView, StatusBar, View, Text, FlatList, Image, Alert, ActivityIndicator,
-  Pressable, Platform, Modal, TouchableOpacity, TextInput, ScrollView,
-  InteractionManager, Dimensions, PanResponder
+  Pressable, Platform, Modal, TouchableOpacity, TextInput,
+  InteractionManager, Dimensions, PanResponder, ScrollView
 } from 'react-native';
 import { Animated } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -22,35 +22,30 @@ import { ImageBackground } from 'react-native';
 const api = axios.create({ baseURL: API_BASE_URL });
 
 export const MASTER_TYPES = [
-  // Head / Neck
   'hat','scarf','tie',
-  // Tops
   'polo','tshirt','shirt','blouse','top','longsleeve',
   'hoodie','sweater','cardigan',
-  // Outerwear
   'jacket','coat','blazer','raincoat',
-  // Bottoms
   'jeans','trousers','shorts','skirt',
-  // One-pieces
   'dress',
-  // Footwear
   'sneakers','shoes','heels','sandals','boots',
-  // Bags
   'bag'
 ];
 
-
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-
-/** Layout */
 const SIDE_PADDING = 16;
 const COLS = 2;
 const COL_GAP = 14;
 const ROW_GAP = 10;
 const TILE_W = Math.round((SCREEN_W - SIDE_PADDING * 2 - COL_GAP) / COLS);
-
 const SWIPE_DX = 40;
 const SWIPE_VX = 0.35;
+
+// ── Carousel layout (3 stacked chips per column) ──────────────────────────────
+const ROWS = 3;
+const COL_W = 128;
+const COL_SPACING = 10;
+const CHIP_VGAP = 6;
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 async function postWithRetry(url, data, config, { retries = 2, timeout = 30000 } = {}) {
@@ -83,6 +78,9 @@ export default function WardrobeScreen({ navigation }) {
   const { t } = useLanguage();
   const { colors } = useTheme();
 
+  const ACCENT = '#2DD4BF';
+  const ACCENT_TEXT = '#FFFFFF';
+
   const typeLabel = (key) => {
     const k = String(key).toLowerCase();
     const val = t(`types.${k}`);
@@ -91,9 +89,6 @@ export default function WardrobeScreen({ navigation }) {
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
-
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchModalOpen, setSearchModalOpen] = useState(false);
 
   const [typeModalOpen, setTypeModalOpen] = useState(false);
   const [typeSearch, setTypeSearch] = useState('');
@@ -107,7 +102,8 @@ export default function WardrobeScreen({ navigation }) {
   const setActiveIndex = (updater) => {
     _setActiveIndex((curr) => {
       const next = typeof updater === 'function' ? updater(curr) : updater;
-      activeIndexRef.current = next; return next;
+      activeIndexRef.current = next;
+      return next;
     });
   };
 
@@ -154,29 +150,15 @@ export default function WardrobeScreen({ navigation }) {
     });
   }, [pages.length]);
 
-  const goToType = (type) => {
-    const idx = pages.findIndex((tpe) => tpe.toLowerCase() === String(type).toLowerCase());
-    if (idx >= 0) goToIndex(idx);
-  };
-
-  useEffect(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return;
-    const exact = pages.find((tpe) => tpe.toLowerCase() === q);
-    const partial = pages.find((tpe) => tpe.toLowerCase().includes(q));
-    goToType(exact || partial || 'all');
-  }, [searchQuery, pages, goToType]);
-
   const afterInteractions = () => new Promise(r => InteractionManager.runAfterInteractions(r));
   const askTypeThenUpload = () => { setTypeSearch(''); setTypeModalOpen(true); };
 
-  const doPickAndUpload = async (chosenType) => {
+  const doPickAndUpload = useCallback(async (chosenType) => {
     if (!chosenType || isPicking || isUploading) return;
     setIsPicking(true);
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) { Alert.alert(t('common.permissionRequired'), t('common.needGalleryAccess')); return; }
-
       const mediaType = ImagePicker.MediaType?.Images ?? ImagePicker.MediaTypeOptions.Images;
       const picked = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: mediaType, quality: 0.8,
@@ -214,22 +196,14 @@ export default function WardrobeScreen({ navigation }) {
       setIsUploading(false);
       setPendingType(null);
     }
-  };
+  }, [getToken, isPicking, isUploading, navigation, t]);
 
-  const handleModalDismiss = async () => {
+  const handleModalDismiss = useCallback(async () => {
     if (!pendingType) return;
-    await afterInteractions(); await new Promise(r => setTimeout(r, 350));
+    await afterInteractions();
+    await new Promise(r => setTimeout(r, 250));
     try { await doPickAndUpload(pendingType); } finally { setPendingType(null); }
-  };
-
-  useEffect(() => {
-    if (Platform.OS === 'android' && !typeModalOpen && pendingType) {
-      (async () => {
-        await afterInteractions(); await new Promise(r => setTimeout(r, 150));
-        await doPickAndUpload(pendingType); setPendingType(null);
-      })();
-    }
-  }, [typeModalOpen, pendingType]);
+  }, [pendingType, doPickAndUpload]);
 
   /** Grid tile */
   const GridItem = ({ uri, onPress, onLongPress }) => (
@@ -239,184 +213,266 @@ export default function WardrobeScreen({ navigation }) {
       delayLongPress={400}
       activeOpacity={0.9}
       style={{
-        width: TILE_W,
-        height: TILE_W,
-        borderRadius: 16,
-        overflow: 'hidden',
-        backgroundColor: colors.surface,
-        borderWidth: 1,
-        borderColor: colors.hairline,
-        shadowColor: colors.shadow,
-        shadowOpacity: 0.08,
-        shadowRadius: 8,
-        shadowOffset: { width: 0, height: 4 },
-        elevation: 3,
-        marginBottom: ROW_GAP,
+        width: TILE_W, height: TILE_W, borderRadius: 16, overflow: 'hidden',
+        backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.hairline,
+        shadowColor: colors.shadow, shadowOpacity: 0.08, shadowRadius: 8,
+        shadowOffset: { width: 0, height: 4 }, elevation: 3, marginBottom: ROW_GAP,
       }}
     >
       <Image source={{ uri }} style={{ width: '100%', height: '100%' }} />
     </TouchableOpacity>
   );
 
-  /** Swipe between pages */
+  // ── Carousel: columns with 3 stacked chips ──────────────────────────────────
+  const columns = useMemo(() => {
+    const perCol = Math.ceil(pages.length / ROWS);
+    return Array.from({ length: perCol }, (_, c) => {
+      const col = [];
+      for (let r = 0; r < ROWS; r++) {
+        const idx = r * perCol + c;
+        const tpe = pages[idx];
+        col.push(tpe ? { tpe, index: idx } : null);
+      }
+      return col;
+    });
+  }, [pages]);
+
+  const indexToColumn = useMemo(() => {
+    const map = {};
+    columns.forEach((col, c) => col.forEach(cell => { if (cell) map[cell.index] = c; }));
+    return map;
+  }, [columns]);
+
+  const zigzagOrder = useMemo(() => {
+    const arr = [];
+    for (let c = 0; c < columns.length; c++) {
+      for (let r = 0; r < ROWS; r++) {
+        const cell = columns[c][r];
+        if (cell) arr.push(cell.index);
+      }
+    }
+    return arr;
+  }, [columns]);
+
+  // Scroll refs + state for *stable centering* (no jump from beginning)
+  const carouselRef = useRef(null);
+  const scrollX = useRef(new Animated.Value(0)).current;
+  const lastCarouselXRef = useRef(0);           // <- remember last offset
+  const contentWidthRef = useRef(0);
+
+  // Keep last X in a ref
+  useEffect(() => {
+    const sub = scrollX.addListener(({ value }) => { lastCarouselXRef.current = value; });
+    return () => scrollX.removeListener(sub);
+  }, [scrollX]);
+
+  // Helper: clamp
+  const clamp = (v, a, b) => Math.max(a, Math.min(v, b));
+
+  // Center selected column smoothly from current position (even after remount)
+  const centerSelectedColumn = useCallback((idx, { animated = true } = {}) => {
+    const c = indexToColumn[idx] ?? 0;
+    const unit = COL_W + COL_SPACING;
+    const colCenter = c * unit + COL_W / 2;
+    const maxX = Math.max(0, contentWidthRef.current - SCREEN_W);
+    const targetX = clamp(colCenter - SCREEN_W / 2, 0, maxX);
+
+    // If ScrollView was remounted (offset reset to 0), first snap back to last known X, then animate a short delta
+    const currentX = lastCarouselXRef.current;
+    if (carouselRef.current) {
+      // restore current position without animation (no visual jump)
+      carouselRef.current.scrollTo({ x: currentX, animated: false });
+
+      if (animated) {
+        // small, natural movement to the target
+        if (Math.abs(targetX - currentX) < 2) return; // nothing to do
+        requestAnimationFrame(() => {
+          carouselRef.current?.scrollTo({ x: targetX, animated: true });
+        });
+      } else {
+        carouselRef.current.scrollTo({ x: targetX, animated: false });
+      }
+    }
+  }, [indexToColumn]);
+
+  // Re-center whenever active index changes
+  useEffect(() => { centerSelectedColumn(activeIndex); }, [activeIndex, centerSelectedColumn]);
+
+  // Also re-center as soon as we know the content width (important on first mount)
+  const handleContentSizeChange = useCallback((w) => {
+    contentWidthRef.current = w;
+    // re-center to the currently active chip (no animation to avoid jumps)
+    centerSelectedColumn(activeIndexRef.current, { animated: false });
+  }, [centerSelectedColumn]);
+
+  const Chip = ({ tpe, index, active }) => {
+    const label = tpe === 'all' ? t('wardrobe.all') : typeLabel(tpe);
+    return (
+      <TouchableOpacity
+        onPress={() => goToIndex(index)}
+        activeOpacity={0.9}
+        style={{
+          width: '100%',
+          marginBottom: CHIP_VGAP,
+          paddingVertical: 8,
+          paddingHorizontal: 12,
+          borderRadius: 999,
+          flexDirection: 'row',
+          alignItems: 'center',
+          backgroundColor: active ? ACCENT : colors.chipBg,
+          borderWidth: 1,
+          borderColor: active ? ACCENT : colors.hairline,
+        }}
+      >
+        <TypeIcon type={tpe} color={active ? ACCENT_TEXT : colors.textMuted} />
+        <Text
+          style={{
+            marginLeft: 8,
+            fontSize: 14,
+            fontWeight: active ? '800' : '600',
+            color: active ? ACCENT_TEXT : colors.text,
+          }}
+          numberOfLines={1}
+        >
+          {label}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
+
+  /** Screen-level swipe to move types in zig-zag order */
+  const panEnabledRef = useRef(true);
   const pan = React.useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => false,
-    onStartShouldSetPanResponderCapture: () => false,
+    onStartShouldSetPanResponder: () => panEnabledRef.current && false,
     onMoveShouldSetPanResponder: (_e, g) => {
-      const ax = Math.abs(g.dx), ay = Math.abs(g.dy); return ax > 12 && ax > ay * 1.2;
+      if (!panEnabledRef.current) return false;
+      const ax = Math.abs(g.dx), ay = Math.abs(g.dy);
+      return ax > 12 && ax > ay * 1.2;
     },
-    onMoveShouldSetPanResponderCapture: (_e, g) => {
-      const ax = Math.abs(g.dx), ay = Math.abs(g.dy); return ax > 12 && ax > ay * 1.2;
-    },
-    onPanResponderTerminationRequest: () => false,
     onPanResponderRelease: (_e, g) => {
-      const idx = activeIndexRef.current;
-      if (g.dx <= -SWIPE_DX || g.vx <= -SWIPE_VX) { goToIndex(idx + 1); }
-      else if (g.dx >= SWIPE_DX || g.vx >= SWIPE_VX) { goToIndex(idx - 1); }
+      const curr = activeIndexRef.current;
+      const pos = zigzagOrder.indexOf(curr);
+      if (pos === -1) return;
+      if (g.dx <= -SWIPE_DX || g.vx <= -SWIPE_VX) {
+        const nextPos = Math.min(zigzagOrder.length - 1, pos + 1);
+        goToIndex(zigzagOrder[nextPos]);
+      } else if (g.dx >= SWIPE_DX || g.vx >= SWIPE_VX) {
+        const prevPos = Math.max(0, pos - 1);
+        goToIndex(zigzagOrder[prevPos]);
+      }
     },
-  }), [goToIndex]);
+  }), [zigzagOrder, goToIndex]);
+
+  // Android: reliability for modal dismiss
+  useEffect(() => {
+    if (Platform.OS === 'android' && !typeModalOpen && pendingType) {
+      (async () => {
+        await afterInteractions(); await new Promise(r => setTimeout(r, 150));
+        try { await doPickAndUpload(pendingType); } finally { setPendingType(null); }
+      })();
+    }
+  }, [typeModalOpen, pendingType, doPickAndUpload]);
 
   const topInset = (Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0) + 18;
-
   const activeKey = pages[activeIndex] || 'all';
   const dataForActive = activeKey === 'all' ? items : (grouped[activeKey] || []);
 
-  /** Tabs state + centering logic */
-  const tabsRef = useRef(null);
-  const tabLayoutsRef = useRef({});
-  const [tabsContentW, setTabsContentW] = useState(0);
-  const didMountTabs = useRef(false);
-  const lastTabsNode = useRef(null);
-
-  useEffect(() => {
-    const layout = tabLayoutsRef.current[activeIndex];
-    const node = tabsRef.current;
-    if (!layout || !node) return;
-    const isNewInstance = node !== lastTabsNode.current;
-    if (isNewInstance) { lastTabsNode.current = node; didMountTabs.current = false; }
-    const desiredCenterX = layout.x + layout.width / 2;
-    const targetX = Math.max(0, Math.min(desiredCenterX - SCREEN_W / 2, Math.max(0, tabsContentW - SCREEN_W)));
-    node.scrollTo({ x: targetX, animated: didMountTabs.current });
-    if (!didMountTabs.current) didMountTabs.current = true;
-  }, [activeIndex, tabsContentW, pages.length]);
-
-  /** Header block (scrolls away with content) */
+  /** Header (Add button + carousel) */
   const HeaderBlock = React.memo(function HeaderBlockComponent() {
     return (
       <View style={{ paddingTop: topInset }}>
-        {/* Add / Search */}
+        {/* Add button */}
         <View style={{ paddingHorizontal: SIDE_PADDING, flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
           <CoachMark id="wardrobe:addItem">
-            <TouchableOpacity
+            <Pressable
               onPress={askTypeThenUpload}
-              activeOpacity={0.9}
-              style={{
-                backgroundColor: colors.primary,
-                paddingHorizontal: 16,
+              style={({ pressed }) => ({
+                backgroundColor: ACCENT,
+                paddingHorizontal: 18,
                 paddingVertical: 12,
-                borderRadius: 14,
+                borderRadius: 999,
+                flexDirection: 'row',
+                alignItems: 'center',
                 shadowColor: colors.shadow,
-                shadowOpacity: 0.18,
-                shadowRadius: 10,
-                shadowOffset: { width: 0, height: 6 },
-                elevation: 4,
-              }}
+                shadowOpacity: 0.22,
+                shadowRadius: 12,
+                shadowOffset: { width: 0, height: 8 },
+                elevation: 5,
+                transform: [{ scale: pressed ? 0.98 : 1 }],
+              })}
             >
-              <Text style={{ color: '#fff', fontWeight: '700' }}>{t('wardrobe.addItem')}</Text>
-            </TouchableOpacity>
+              <Text style={{ color: ACCENT_TEXT, fontSize: 18, marginRight: 8 }}>＋</Text>
+              <Text style={{ color: ACCENT_TEXT, fontWeight: '800' }}>{t('wardrobe.addItem')}</Text>
+            </Pressable>
           </CoachMark>
           <View style={{ flex: 1 }} />
-          <TouchableOpacity
-            onPress={() => setSearchModalOpen(true)}
-            style={{
-              width: 44, height: 44, borderRadius: 12, borderWidth: 1, borderColor: colors.hairline,
-              alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface,
-            }}
-            activeOpacity={0.85}
-            accessibilityLabel={t('common.search')}
-          >
-            <Text style={{ fontSize: 20 }}>🔍</Text>
-          </TouchableOpacity>
         </View>
 
-        {/* Tabs */}
-        <ScrollView
-          ref={tabsRef}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: SIDE_PADDING, paddingBottom: 8 }}
-          onContentSizeChange={(w) => setTabsContentW(w)}
+        {/* Carousel */}
+        <View
+          style={{ paddingHorizontal: SIDE_PADDING, paddingBottom: 8 }}
+          onTouchStart={() => { panEnabledRef.current = false; }}
+          onTouchEnd={() => { panEnabledRef.current = true; }}
+          onTouchCancel={() => { panEnabledRef.current = true; }}
         >
-          {pages.map((tpe, i) => {
-            const active = i === activeIndex;
-            const label = tpe === 'all' ? t('wardrobe.all') : typeLabel(tpe);
-            return (
-              <TouchableOpacity
-                key={tpe}
-                onLayout={(e) => {
-                  const { x, width } = e.nativeEvent.layout;
-                  tabLayoutsRef.current[i] = { x, width };
-                }}
-                onPress={() => goToIndex(i)}
-                activeOpacity={0.9}
-                style={{
-                  marginRight: 12,
-                  paddingVertical: 8,
-                  paddingHorizontal: 12,
-                  borderRadius: 14,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  backgroundColor: active ? colors.chipActiveBg : colors.chipBg,
-                  borderWidth: 1,
-                  borderColor: active ? 'transparent' : colors.hairline,
-                }}
-              >
-                <TypeIcon type={tpe} color={active ? colors.chipActiveText : colors.textMuted} />
-                <Text
-                  style={{
-                    marginLeft: 8,
-                    fontSize: 14,
-                    fontWeight: active ? '800' : '600',
-                    color: active ? colors.chipActiveText : colors.text,
-                  }}
+          <Animated.ScrollView
+            ref={carouselRef}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            decelerationRate="fast"
+            onScroll={Animated.event(
+              [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+              { useNativeDriver: false }
+            )}
+            scrollEventThrottle={16}
+            contentContainerStyle={{ paddingRight: 6 }}
+            onContentSizeChange={handleContentSizeChange}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+              {columns.map((col, cIdx) => (
+                <View
+                  key={`col-${cIdx}`}
+                  style={{ width: COL_W, marginRight: COL_SPACING, alignItems: 'stretch' }}
                 >
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+                  {col.map((cell, rIdx) =>
+                    cell ? (
+                      <Chip
+                        key={`${cell.tpe}-${cell.index}`}
+                        tpe={cell.tpe}
+                        index={cell.index}
+                        active={cell.index === activeIndex}
+                      />
+                    ) : (
+                      <View key={`empty-${cIdx}-${rIdx}`} style={{ height: 0, marginBottom: CHIP_VGAP }} />
+                    )
+                  )}
+                </View>
+              ))}
+            </View>
+          </Animated.ScrollView>
+        </View>
 
-        {/* Section title */}
         <Text style={{ fontSize: 22, fontWeight: '800', color: colors.text, paddingHorizontal: SIDE_PADDING, marginBottom: 10 }}>
-          {activeKey === 'all' ? t('wardrobe.all') : typeLabel(activeKey)}
+          {pages[activeIndex] === 'all' ? t('wardrobe.all') : typeLabel(pages[activeIndex])}
         </Text>
       </View>
     );
   });
 
-  /** ---- Scrolling background pattern (robust for long lists) ---- */
+  /** Background pattern + main list */
   const scrollY = useRef(new Animated.Value(0)).current;
   const [contentH, setContentH] = useState(SCREEN_H);
   const bgTranslateY = Animated.multiply(scrollY, -1);
-  const BG_BUFFER = 600; // extra height so you never "scroll past" the pattern
-
-  const filteredTypes = useMemo(() => {
-    const q = typeSearch.trim().toLowerCase();
-    if (!q) return MASTER_TYPES;
-    return MASTER_TYPES.filter(tp => tp.includes(q));
-  }, [typeSearch]);
+  const BG_BUFFER = 600;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-      {/* Always-mounted background layer */}
       <Animated.View
         pointerEvents="none"
         style={{
           position: 'absolute',
           top: 0, left: 0, right: 0,
           transform: [{ translateY: bgTranslateY }],
-          // Height grows but never shrinks while you scroll/load
           height: Math.max(contentH + BG_BUFFER, SCREEN_H + BG_BUFFER),
         }}
       >
@@ -483,10 +539,7 @@ export default function WardrobeScreen({ navigation }) {
               { useNativeDriver: true }
             )}
             scrollEventThrottle={16}
-            onContentSizeChange={(_w, h) => {
-              // 🔸 only ever grow the background; never shrink mid-render
-              setContentH(prev => Math.max(prev, h));
-            }}
+            onContentSizeChange={(_w, h) => setContentH(prev => Math.max(prev, h))}
           />
         )}
       </View>
@@ -503,12 +556,7 @@ export default function WardrobeScreen({ navigation }) {
         onShow={() => {
           if (tutorial?.isRunning?.()) {
             setTimeout(() => {
-              tutorial.setNext?.({
-                anchorId: 'wardrobe:typePicker',
-                textKey: 'tutorial.pickType',
-                screen: 'Wardrobe',
-                prefer: 'above',
-              });
+              tutorial.setNext?.({ anchorId: 'wardrobe:typePicker', textKey: 'tutorial.pickType', screen: 'Wardrobe', prefer: 'above' });
             }, 250);
           }
         }}
@@ -554,21 +602,20 @@ export default function WardrobeScreen({ navigation }) {
                 value={typeSearch}
                 onChangeText={setTypeSearch}
                 style={{
-                  height: 40,
-                  borderWidth: 1,
-                  borderColor: colors.hairline,
-                  backgroundColor: colors.surfaceAlt,
-                  color: colors.text,
-                  borderRadius: 10,
-                  paddingHorizontal: 12,
-                  marginBottom: 10,
+                  height: 40, borderWidth: 1, borderColor: colors.hairline,
+                  backgroundColor: colors.surfaceAlt, color: colors.text,
+                  borderRadius: 10, paddingHorizontal: 12, marginBottom: 10,
                 }}
               />
 
               <View style={{ flex: 1 }}>
                 <CoachMark id="wardrobe:typePicker">
                   <FlatList
-                    data={filteredTypes}
+                    data={useMemo(() => {
+                      const q = typeSearch.trim().toLowerCase();
+                      if (!q) return MASTER_TYPES;
+                      return MASTER_TYPES.filter(tp => tp.includes(q));
+                    }, [typeSearch])}
                     numColumns={2}
                     keyExtractor={(tp) => tp}
                     keyboardShouldPersistTaps="handled"
@@ -597,16 +644,7 @@ export default function WardrobeScreen({ navigation }) {
                         }}
                       >
                         <TypeIcon type={item} color={colors.text} size={34} />
-                        <Text
-                          style={{
-                            marginTop: 8,
-                            fontSize: 14,
-                            fontWeight: '700',
-                            color: colors.text,
-                            textAlign: 'center',
-                          }}
-                          numberOfLines={2}
-                        >
+                        <Text style={{ marginTop: 8, fontSize: 14, fontWeight: '700', color: colors.text, textAlign: 'center' }} numberOfLines={2}>
                           {typeLabel(item)}
                         </Text>
                       </TouchableOpacity>
@@ -626,47 +664,19 @@ export default function WardrobeScreen({ navigation }) {
                 onPress={() => setTypeModalOpen(false)}
                 activeOpacity={0.9}
                 style={{
-                  height: 46, borderRadius: 12, backgroundColor: colors.primary,
+                  height: 46, borderRadius: 12, backgroundColor: ACCENT,
                   alignItems: 'center', justifyContent: 'center', marginTop: 8,
                   shadowColor: colors.shadow, shadowOpacity: 0.18, shadowRadius: 10,
                   shadowOffset: { width: 0, height: 6 }, elevation: 4,
                 }}
               >
-                <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>
+                <Text style={{ color: ACCENT_TEXT, fontSize: 16, fontWeight: '700' }}>
                   {t('common.close')}
                 </Text>
               </TouchableOpacity>
             </View>
           </Pressable>
         </Pressable>
-      </Modal>
-
-      {/* Search modal */}
-      <Modal visible={searchModalOpen} transparent animationType="fade" onRequestClose={() => setSearchModalOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.25)', justifyContent: 'center', padding: 24 }}>
-          <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: colors.hairline }}>
-            <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8, color: colors.text }}>{t('wardrobe.searchByType')}</Text>
-            <TextInput
-              placeholder={t('wardrobe.searchExample')}
-              placeholderTextColor={colors.textMuted}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              autoFocus
-              style={{
-                height: 42, borderWidth: 1, borderColor: colors.hairline, backgroundColor: colors.surfaceAlt,
-                color: colors.text, borderRadius: 10, paddingHorizontal: 12, marginBottom: 12
-              }}
-            />
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-              <TouchableOpacity onPress={() => { setSearchQuery(''); setSearchModalOpen(false); }}>
-                <Text style={{ paddingVertical: 8, paddingHorizontal: 12, marginRight: 8, color: colors.textMuted }}>{t('common.cancel')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setSearchModalOpen(false)}>
-                <Text style={{ paddingVertical: 8, paddingHorizontal: 12, color: colors.primary, fontWeight: '700' }}>{t('common.done')}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
       </Modal>
     </SafeAreaView>
   );
