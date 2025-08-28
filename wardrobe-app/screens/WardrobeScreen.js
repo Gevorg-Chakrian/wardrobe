@@ -18,6 +18,7 @@ import { CoachMark, useTutorial } from '../tutorial/TutorialProvider';
 import { useTheme } from '../ui/theme';
 import TypeIcon from '../components/TypeIcon';
 import { ImageBackground } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const api = axios.create({ baseURL: API_BASE_URL });
 
@@ -41,11 +42,11 @@ const TILE_W = Math.round((SCREEN_W - SIDE_PADDING * 2 - COL_GAP) / COLS);
 const SWIPE_DX = 40;
 const SWIPE_VX = 0.35;
 
-// ── Carousel layout (3 stacked chips per column) ──────────────────────────────
-const ROWS = 3;
-const COL_W = 128;
-const COL_SPACING = 10;
-const CHIP_VGAP = 6;
+// Carousel layout constants (columns of chips)
+const ROWS = 3;             // 3 rows per column
+const COL_W = 128;          // fixed column width so columns align perfectly
+const COL_SPACING = 10;     // horizontal gap between columns
+const CHIP_VGAP = 6;        // vertical gap between chips inside a column
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 async function postWithRetry(url, data, config, { retries = 2, timeout = 30000 } = {}) {
@@ -102,8 +103,7 @@ export default function WardrobeScreen({ navigation }) {
   const setActiveIndex = (updater) => {
     _setActiveIndex((curr) => {
       const next = typeof updater === 'function' ? updater(curr) : updater;
-      activeIndexRef.current = next;
-      return next;
+      activeIndexRef.current = next; return next;
     });
   };
 
@@ -159,6 +159,7 @@ export default function WardrobeScreen({ navigation }) {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) { Alert.alert(t('common.permissionRequired'), t('common.needGalleryAccess')); return; }
+
       const mediaType = ImagePicker.MediaType?.Images ?? ImagePicker.MediaTypeOptions.Images;
       const picked = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: mediaType, quality: 0.8,
@@ -198,6 +199,7 @@ export default function WardrobeScreen({ navigation }) {
     }
   }, [getToken, isPicking, isUploading, navigation, t]);
 
+  // iOS: run upload after modal dismiss
   const handleModalDismiss = useCallback(async () => {
     if (!pendingType) return;
     await afterInteractions();
@@ -223,10 +225,12 @@ export default function WardrobeScreen({ navigation }) {
     </TouchableOpacity>
   );
 
-  // ── Carousel: columns with 3 stacked chips ──────────────────────────────────
+  /** ───────────────────── CAROUSEL: columns with 3 stacked chips ───────────────────── */
+
+  // Build columns (column-major): each column has up to 3 entries (top/middle/bottom)
   const columns = useMemo(() => {
     const perCol = Math.ceil(pages.length / ROWS);
-    return Array.from({ length: perCol }, (_, c) => {
+    const cols = Array.from({ length: perCol }, (_, c) => {
       const col = [];
       for (let r = 0; r < ROWS; r++) {
         const idx = r * perCol + c;
@@ -235,14 +239,17 @@ export default function WardrobeScreen({ navigation }) {
       }
       return col;
     });
+    return cols;
   }, [pages]);
 
+  // Map: type index -> column index
   const indexToColumn = useMemo(() => {
     const map = {};
     columns.forEach((col, c) => col.forEach(cell => { if (cell) map[cell.index] = c; }));
     return map;
   }, [columns]);
 
+  // Zig-zag order for page swipes: for each column, top→middle→bottom
   const zigzagOrder = useMemo(() => {
     const arr = [];
     for (let c = 0; c < columns.length; c++) {
@@ -254,7 +261,7 @@ export default function WardrobeScreen({ navigation }) {
     return arr;
   }, [columns]);
 
-  // Scroll refs + state for *stable centering* (no jump from beginning)
+  // Carousel scroll + centering
   const carouselRef = useRef(null);
   const scrollX = useRef(new Animated.Value(0)).current;
   const lastCarouselXRef = useRef(0);           // <- remember last offset
@@ -340,7 +347,7 @@ export default function WardrobeScreen({ navigation }) {
     );
   };
 
-  /** Screen-level swipe to move types in zig-zag order */
+  /** Screen-level swipe to move between types in zig-zag order */
   const panEnabledRef = useRef(true);
   const pan = React.useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => panEnabledRef.current && false,
@@ -363,11 +370,12 @@ export default function WardrobeScreen({ navigation }) {
     },
   }), [zigzagOrder, goToIndex]);
 
-  // Android: reliability for modal dismiss
+  // Android: modal may not call onDismiss reliably
   useEffect(() => {
     if (Platform.OS === 'android' && !typeModalOpen && pendingType) {
       (async () => {
-        await afterInteractions(); await new Promise(r => setTimeout(r, 150));
+        await afterInteractions();
+        await new Promise(r => setTimeout(r, 150));
         try { await doPickAndUpload(pendingType); } finally { setPendingType(null); }
       })();
     }
@@ -377,6 +385,59 @@ export default function WardrobeScreen({ navigation }) {
   const activeKey = pages[activeIndex] || 'all';
   const dataForActive = activeKey === 'all' ? items : (grouped[activeKey] || []);
 
+  /** ─────────────── Fancy Add Button component ─────────────── */
+  const FancyAddButton = ({ label, onPress }) => {
+    const WIDTH = Math.min(SCREEN_W - SIDE_PADDING * 2, 320);
+    return (
+      <Pressable onPress={onPress} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.98 : 1 }] })}>
+        <LinearGradient
+          colors={[ACCENT, '#34d399', '#06b6d4']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{
+            width: WIDTH,
+            borderRadius: 28,
+            padding: 5, // outline thickness
+            shadowColor: colors.shadow,
+            shadowOpacity: 0.28,
+            shadowRadius: 14,
+            shadowOffset: { width: 0, height: 8 },
+            elevation: 6,
+          }}
+        >
+          <View
+            style={{
+              borderRadius: 26,
+              backgroundColor: colors.surface,
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingVertical: 14,
+              paddingHorizontal: 22,
+            }}
+          >
+            <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text, letterSpacing: 0.3 }}>
+              {label}
+            </Text>
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                top: 2,
+                left: 12,
+                right: 12,
+                height: 10,
+                borderTopLeftRadius: 26,
+                borderTopRightRadius: 26,
+                backgroundColor: 'rgba(255,255,255,0.35)',
+                opacity: 0.65,
+              }}
+            />
+          </View>
+        </LinearGradient>
+      </Pressable>
+    );
+  };
+
   /** Header (Add button + carousel) */
   const HeaderBlock = React.memo(function HeaderBlockComponent() {
     return (
@@ -384,26 +445,7 @@ export default function WardrobeScreen({ navigation }) {
         {/* Add button */}
         <View style={{ paddingHorizontal: SIDE_PADDING, flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
           <CoachMark id="wardrobe:addItem">
-            <Pressable
-              onPress={askTypeThenUpload}
-              style={({ pressed }) => ({
-                backgroundColor: ACCENT,
-                paddingHorizontal: 18,
-                paddingVertical: 12,
-                borderRadius: 999,
-                flexDirection: 'row',
-                alignItems: 'center',
-                shadowColor: colors.shadow,
-                shadowOpacity: 0.22,
-                shadowRadius: 12,
-                shadowOffset: { width: 0, height: 8 },
-                elevation: 5,
-                transform: [{ scale: pressed ? 0.98 : 1 }],
-              })}
-            >
-              <Text style={{ color: ACCENT_TEXT, fontSize: 18, marginRight: 8 }}>＋</Text>
-              <Text style={{ color: ACCENT_TEXT, fontWeight: '800' }}>{t('wardrobe.addItem')}</Text>
-            </Pressable>
+            <FancyAddButton label={t('wardrobe.addItem')} onPress={askTypeThenUpload} />
           </CoachMark>
           <View style={{ flex: 1 }} />
         </View>
