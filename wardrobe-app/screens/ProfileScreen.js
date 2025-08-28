@@ -1,7 +1,14 @@
 // screens/ProfileScreen.js
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  SafeAreaView, View, Text, TouchableOpacity, Image, Dimensions, Alert,
+  SafeAreaView,
+  View,
+  Text,
+  TouchableOpacity,
+  Image,
+  Dimensions,
+  Alert,
+  StyleSheet,
 } from 'react-native';
 import { Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,20 +20,26 @@ import BottomNav from '../components/BottomNav';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { CoachMark, useTutorial } from '../tutorial/TutorialProvider';
 import { useFocusEffect } from '@react-navigation/native';
+import { useTheme } from '../ui/theme';
 import { ImageBackground } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const api = axios.create({ baseURL: API_BASE_URL });
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const SIDE = 16;
 const GAP = 12;
 const COL_W = Math.floor((SCREEN_W - SIDE * 2 - GAP) / 2);
 
-// Accent to match Wardrobe
-const ACCENT = '#2DD4BF';
+// Background behavior (same as Wardrobe)
+const BG_BUFFER = 600;
 
-function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+// Accent palette (same as Wardrobe fancy button)
+const ACCENT = '#2DD4BF';
+const ACCENT_TEXT = '#FFFFFF';
+
+/** ---- helpers ---- */
+function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 function base64UrlToBase64(s) {
   const n = s.replace(/-/g, '+').replace(/_/g, '/');
   const pad = n.length % 4 ? 4 - (n.length % 4) : 0;
@@ -71,23 +84,28 @@ async function resolveDisplayName() {
   }
   return 'Profile';
 }
+/** ------------------------------------------------------------- */
 
 export default function ProfileScreen({ navigation }) {
   const tutorial = useTutorial();
-  useFocusEffect(useCallback(() => {
-    tutorial?.onScreen?.('Profile');
-    tutorial?.startIfEnabled?.();
-  }, [tutorial]));
+  useFocusEffect(
+    useCallback(() => {
+      tutorial?.onScreen?.('Profile');
+      tutorial?.startIfEnabled?.();
+    }, [tutorial])
+  );
 
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
+  const { colors } = useTheme();
 
   const [username, setUsername] = useState('Profile');
   const [looks, setLooks] = useState([]);
-  const [ratios, setRatios] = useState({}); // id -> aspectRatio
-  const [deletingIds, setDeletingIds] = useState({}); // id -> true
+  const [ratios, setRatios] = useState({}); // id -> aspectRatio (w/h)
+  const [deletingIds, setDeletingIds] = useState({}); // id -> true while deleting
 
   useEffect(() => { (async () => setUsername(await resolveDisplayName()))(); }, []);
+
   const getToken = async () => SecureStore.getItemAsync('token');
 
   const fetchLooks = useCallback(async () => {
@@ -132,54 +150,90 @@ export default function ProfileScreen({ navigation }) {
       t('profile.deleteLookBody', 'This cannot be undone.'),
       [
         { text: t('common.cancel', 'Cancel'), style: 'cancel' },
-        { text: t('common.delete', 'Delete'), style: 'destructive', onPress: () => doDelete(lookId) },
+        {
+          text: t('common.delete', 'Delete'),
+          style: 'destructive',
+          onPress: () => doDelete(lookId),
+        },
       ]
     );
   };
+
   const doDelete = async (lookId) => {
     if (!lookId || deletingIds[lookId]) return;
     try {
       setDeletingIds(prev => ({ ...prev, [lookId]: true }));
-      setLooks(prev => prev.filter(l => l.id !== lookId)); // optimistic
+      // optimistic UI: drop locally
+      setLooks(prev => prev.filter(l => l.id !== lookId));
       const token = await getToken();
       await api.delete(`/looks/${lookId}`, { headers: { Authorization: `Bearer ${token}` } });
+      // refresh to be safe
       fetchLooks();
-    } catch {
+    } catch (e) {
       await fetchLooks();
       Alert.alert(t('common.error', 'Error'), t('profile.deleteLookFailed', 'Failed to delete. Please try again.'));
     } finally {
-      setDeletingIds(prev => { const n = { ...prev }; delete n[lookId]; return n; });
+      setDeletingIds(prev => {
+        const next = { ...prev };
+        delete next[lookId];
+        return next;
+      });
     }
   };
 
-  /** Fancy button (same style as Wardrobe) */
-  const FancyButton = ({ label, onPress }) => {
-    const WIDTH = Math.min(SCREEN_W - SIDE * 2, 320);
+  /** ---------- Wardrobe-style background (parallax + grow-only) ---------- */
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const [contentH, setContentH] = useState(SCREEN_H);
+  const bgTranslateY = Animated.multiply(scrollY, -1);
+
+  /** ---------- Fancy Create Button (matches Wardrobe) ---------- */
+  const FancyPrimaryButton = ({ label, onPress }) => {
+    const WIDTH = Math.min(SCREEN_W - SIDE * 2, 340);
     return (
-      <TouchableOpacity activeOpacity={0.95} onPress={onPress} style={{ transform: [{ scale: 1 }] }}>
+      <TouchableOpacity onPress={onPress} activeOpacity={0.95}>
         <LinearGradient
           colors={[ACCENT, '#34d399', '#06b6d4']}
-          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
           style={{
-            width: WIDTH, borderRadius: 28, padding: 5,
-            shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 14,
-            shadowOffset: { width: 0, height: 8 }, elevation: 6,
+            width: WIDTH,
+            borderRadius: 28,
+            padding: 5, // gradient outline thickness
+            shadowColor: colors.shadow,
+            shadowOpacity: 0.28,
+            shadowRadius: 14,
+            shadowOffset: { width: 0, height: 8 },
+            elevation: 6,
+            alignSelf: 'center',
           }}
         >
-          <View style={{
-            borderRadius: 26, backgroundColor: '#fff',
-            alignItems: 'center', justifyContent: 'center',
-            paddingVertical: 14, paddingHorizontal: 22,
-          }}>
-            <Text style={{ fontSize: 16, fontWeight: '800', color: '#111', letterSpacing: 0.3 }}>
+          <View
+            style={{
+              borderRadius: 26,
+              backgroundColor: colors.surface,
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingVertical: 16,
+              paddingHorizontal: 22,
+            }}
+          >
+            <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text, letterSpacing: 0.3 }}>
               {label}
             </Text>
+
+            {/* glossy highlight */}
             <View
               pointerEvents="none"
               style={{
-                position: 'absolute', top: 2, left: 12, right: 12, height: 10,
-                borderTopLeftRadius: 26, borderTopRightRadius: 26,
-                backgroundColor: 'rgba(255,255,255,0.35)', opacity: 0.65,
+                position: 'absolute',
+                top: 2,
+                left: 12,
+                right: 12,
+                height: 10,
+                borderTopLeftRadius: 26,
+                borderTopRightRadius: 26,
+                backgroundColor: 'rgba(255,255,255,0.35)',
+                opacity: 0.65,
               }}
             />
           </View>
@@ -188,130 +242,175 @@ export default function ProfileScreen({ navigation }) {
     );
   };
 
-  /** Parallax paper background (same as Wardrobe) */
-  const scrollY = useRef(new Animated.Value(0)).current;
-  const bgTranslateY = Animated.multiply(scrollY, -1);
-  const [contentH, setContentH] = useState(SCREEN_H);
-  const BG_BUFFER = 600;
-
-  /** Header (scrolls away with content) */
-  const HeaderBlock = React.memo(() => (
-    <View style={{ paddingTop: insets.top + 10, paddingBottom: 12 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: SIDE, marginBottom: 12 }}>
-        <Text style={{ fontSize: 22, fontWeight: '800', flex: 1 }} numberOfLines={1}>{username}</Text>
+  /** ---------- Top block (scrolls away; not sticky) ---------- */
+  const TopBlock = () => (
+    <View style={{ paddingTop: insets.top + 10 }}>
+      {/* Header: name + settings (scrolls away) */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: SIDE,
+          marginBottom: 12,
+        }}
+      >
+        <Text
+          style={{ fontSize: 22, fontWeight: '800', flex: 1, color: colors.text }}
+          numberOfLines={1}
+        >
+          {username}
+        </Text>
         <TouchableOpacity onPress={() => navigation.navigate('Settings')} activeOpacity={0.8}>
-          <Ionicons name="settings-outline" size={24} color="#333" />
+          <Ionicons name="settings-outline" size={24} color={colors.text} />
         </TouchableOpacity>
       </View>
 
-      <View style={{ paddingHorizontal: SIDE, alignItems: 'flex-start' }}>
+      {/* Create look button (same style as Wardrobe's Add Item) */}
+      <View style={{ paddingHorizontal: SIDE, marginBottom: 16 }}>
         <CoachMark id="profile:createLook">
-          <FancyButton label={t('profile.createLook')} onPress={() => navigation.navigate('CreateLook')} />
+          <FancyPrimaryButton
+            label={t('profile.createLook')}
+            onPress={() => navigation.navigate('CreateLook')}
+          />
         </CoachMark>
       </View>
-
-      {latest ? (
-        <View style={{ paddingHorizontal: SIDE, marginTop: 16 }}>
-          <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 8 }}>{t('profile.latestLook')}</Text>
-          <TouchableOpacity
-            onPress={() => navigation.navigate('LookDetails', { lookId: latest.id })}
-            onLongPress={() => confirmDelete(latest.id)}
-            delayLongPress={400}
-            activeOpacity={0.85}
-            style={{
-              width: '100%', borderRadius: 12, overflow: 'hidden',
-              backgroundColor: '#eee', opacity: deletingIds[latest.id] ? 0.6 : 1,
-            }}
-          >
-            <Image
-              source={{ uri: latest.image_url || latest.imageUrl || latest.url }}
-              style={{ width: '100%', aspectRatio: ratios[latest.id] || 1 }}
-              resizeMode="cover"
-            />
-          </TouchableOpacity>
-        </View>
-      ) : null}
     </View>
-  ));
+  );
 
+  /** ---------- Main render ---------- */
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
-      {/* Paper pattern background with subtle parallax */}
-      <Animated.View
-        pointerEvents="none"
-        style={{
-          position: 'absolute', top: 0, left: 0, right: 0,
-          transform: [{ translateY: bgTranslateY }],
-          height: Math.max(contentH + BG_BUFFER, SCREEN_H + BG_BUFFER),
-        }}
-      >
-        <ImageBackground
-          source={require('../assets/patterns/light-paper.png')}
-          resizeMode="repeat"
-          style={{ flex: 1, width: '100%' }}
-        />
-      </Animated.View>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+      {/* Background layer (identical pattern + behavior to Wardrobe) */}
+      <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+        <Animated.View
+          style={[
+            StyleSheet.absoluteFillObject,
+            {
+              transform: [{ translateY: bgTranslateY }],
+              height: Math.max(contentH + BG_BUFFER, SCREEN_H + BG_BUFFER),
+            },
+          ]}
+        >
+          <ImageBackground
+            source={require('../assets/patterns/light-paper.png')}
+            resizeMode="repeat"
+            style={StyleSheet.absoluteFillObject}
+          />
+        </Animated.View>
+      </View>
 
-      {/* Content */}
-      <Animated.ScrollView
+      {/* Scrollable content (updates background height & parallax) */}
+      <Animated.FlatList
+        data={[{ kind: 'top' }, { kind: 'latest' }, { kind: 'grid' }]}
+        keyExtractor={(it, i) => it.kind + i}
         showsVerticalScrollIndicator={false}
+        ListFooterComponent={<View style={{ height: insets.bottom + 80 }} />}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
           { useNativeDriver: true }
         )}
         scrollEventThrottle={16}
-        onContentSizeChange={(_w, h) => setContentH(prev => Math.max(prev, h))}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 80 }}
-      >
-        <HeaderBlock />
+        onContentSizeChange={(_w, h) => {
+          // grow-only so you never scroll past the pattern
+          setContentH(prev => (h > prev ? h : prev));
+        }}
+        renderItem={({ item }) => {
+          if (item.kind === 'top') {
+            return <TopBlock />;
+          }
 
-        {/* Grid */}
-        <View style={{ paddingHorizontal: SIDE, flexDirection: 'row', gap: GAP }}>
-          <View style={{ width: COL_W }}>
-            {colA.map(lk => {
-              const uri = lk.image_url || lk.imageUrl || lk.url;
-              const isDeleting = !!deletingIds[lk.id];
-              return (
+          if (item.kind === 'latest') {
+            if (!latest) return null;
+            const ratio = ratios[latest.id] || 1;
+            const uri = latest.image_url || latest.imageUrl || latest.url;
+            const isDeleting = !!deletingIds[latest.id];
+            return (
+              <View style={{ paddingHorizontal: SIDE, marginBottom: 16 }}>
+                <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 8, color: colors.text }}>
+                  {t('profile.latestLook')}
+                </Text>
                 <TouchableOpacity
-                  key={lk.id}
-                  onPress={() => navigation.navigate('LookDetails', { lookId: lk.id })}
-                  onLongPress={() => confirmDelete(lk.id)}
+                  onPress={() => navigation.navigate('LookDetails', { lookId: latest.id })}
+                  onLongPress={() => confirmDelete(latest.id)}
                   delayLongPress={400}
                   activeOpacity={0.85}
                   style={{
-                    marginBottom: GAP, borderRadius: 12, overflow: 'hidden',
-                    backgroundColor: '#eee', opacity: isDeleting ? 0.6 : 1,
+                    width: '100%',
+                    borderRadius: 12,
+                    overflow: 'hidden',
+                    backgroundColor: colors.surface,
+                    opacity: isDeleting ? 0.6 : 1,
+                    borderWidth: 1,
+                    borderColor: colors.hairline,
                   }}
                 >
-                  <Image source={{ uri }} style={{ width: '100%', aspectRatio: ratios[lk.id] || 1 }} resizeMode="cover" />
+                  <Image source={{ uri }} style={{ width: '100%', aspectRatio: ratio }} resizeMode="cover" />
                 </TouchableOpacity>
-              );
-            })}
-          </View>
-          <View style={{ width: COL_W }}>
-            {colB.map(lk => {
-              const uri = lk.image_url || lk.imageUrl || lk.url;
-              const isDeleting = !!deletingIds[lk.id];
-              return (
-                <TouchableOpacity
-                  key={lk.id}
-                  onPress={() => navigation.navigate('LookDetails', { lookId: lk.id })}
-                  onLongPress={() => confirmDelete(lk.id)}
-                  delayLongPress={400}
-                  activeOpacity={0.85}
-                  style={{
-                    marginBottom: GAP, borderRadius: 12, overflow: 'hidden',
-                    backgroundColor: '#eee', opacity: isDeleting ? 0.6 : 1,
-                  }}
-                >
-                  <Image source={{ uri }} style={{ width: '100%', aspectRatio: ratios[lk.id] || 1 }} resizeMode="cover" />
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-      </Animated.ScrollView>
+              </View>
+            );
+          }
 
+          // grid
+          return (
+            <View style={{ paddingHorizontal: SIDE, flexDirection: 'row', gap: GAP }}>
+              <View style={{ width: COL_W }}>
+                {colA.map(lk => {
+                  const uri = lk.image_url || lk.imageUrl || lk.url;
+                  const isDeleting = !!deletingIds[lk.id];
+                  return (
+                    <TouchableOpacity
+                      key={lk.id}
+                      onPress={() => navigation.navigate('LookDetails', { lookId: lk.id })}
+                      onLongPress={() => confirmDelete(lk.id)}
+                      delayLongPress={400}
+                      activeOpacity={0.85}
+                      style={{
+                        marginBottom: GAP,
+                        borderRadius: 12,
+                        overflow: 'hidden',
+                        backgroundColor: colors.surface,
+                        opacity: isDeleting ? 0.6 : 1,
+                        borderWidth: 1,
+                        borderColor: colors.hairline,
+                      }}
+                    >
+                      <Image source={{ uri }} style={{ width: '100%', aspectRatio: ratios[lk.id] || 1 }} resizeMode="cover" />
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <View style={{ width: COL_W }}>
+                {colB.map(lk => {
+                  const uri = lk.image_url || lk.imageUrl || lk.url;
+                  const isDeleting = !!deletingIds[lk.id];
+                  return (
+                    <TouchableOpacity
+                      key={lk.id}
+                      onPress={() => navigation.navigate('LookDetails', { lookId: lk.id })}
+                      onLongPress={() => confirmDelete(lk.id)}
+                      delayLongPress={400}
+                      activeOpacity={0.85}
+                      style={{
+                        marginBottom: GAP,
+                        borderRadius: 12,
+                        overflow: 'hidden',
+                        backgroundColor: colors.surface,
+                        opacity: isDeleting ? 0.6 : 1,
+                        borderWidth: 1,
+                        borderColor: colors.hairline,
+                      }}
+                    >
+                      <Image source={{ uri }} style={{ width: '100%', aspectRatio: ratios[lk.id] || 1 }} resizeMode="cover" />
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          );
+        }}
+      />
+
+      {/* Bottom nav */}
       <BottomNav navigation={navigation} active="profile" />
     </SafeAreaView>
   );
