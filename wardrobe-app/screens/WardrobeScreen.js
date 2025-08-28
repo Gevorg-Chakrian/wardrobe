@@ -21,12 +21,24 @@ import { ImageBackground } from 'react-native';
 
 const api = axios.create({ baseURL: API_BASE_URL });
 
-const MASTER_TYPES = [
-  'tshirt','shirt','blouse','top','hoodie','sweater',
-  'jeans','trousers','shorts','skirt','dress','jacket',
-  'coat','blazer','cardigan','sneakers','shoes','boots',
-  'bag','hat','scarf','accessory'
+export const MASTER_TYPES = [
+  // Head / Neck
+  'hat','scarf','tie',
+  // Tops
+  'polo','tshirt','shirt','blouse','top','longsleeve',
+  'hoodie','sweater','cardigan',
+  // Outerwear
+  'jacket','coat','blazer','raincoat',
+  // Bottoms
+  'jeans','trousers','shorts','skirt',
+  // One-pieces
+  'dress',
+  // Footwear
+  'sneakers','shoes','heels','sandals','boots',
+  // Bags
+  'bag'
 ];
+
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -34,7 +46,7 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const SIDE_PADDING = 16;
 const COLS = 2;
 const COL_GAP = 14;
-const ROW_GAP = 18;
+const ROW_GAP = 10;
 const TILE_W = Math.round((SCREEN_W - SIDE_PADDING * 2 - COL_GAP) / COLS);
 
 const SWIPE_DX = 40;
@@ -389,6 +401,12 @@ export default function WardrobeScreen({ navigation }) {
   const bgTranslateY = Animated.multiply(scrollY, -1);
   const BG_BUFFER = 600; // extra height so you never "scroll past" the pattern
 
+  const filteredTypes = useMemo(() => {
+    const q = typeSearch.trim().toLowerCase();
+    if (!q) return MASTER_TYPES;
+    return MASTER_TYPES.filter(tp => tp.includes(q));
+  }, [typeSearch]);
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* Always-mounted background layer */}
@@ -550,20 +568,56 @@ export default function WardrobeScreen({ navigation }) {
               <View style={{ flex: 1 }}>
                 <CoachMark id="wardrobe:typePicker">
                   <FlatList
-                    data={MASTER_TYPES.filter(tp => tp.includes(typeSearch.trim().toLowerCase()))}
+                    data={filteredTypes}
+                    numColumns={2}
                     keyExtractor={(tp) => tp}
                     keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                    columnWrapperStyle={{ justifyContent: 'center', paddingHorizontal: 0, columnGap: 5 }}
+                    contentContainerStyle={{ paddingBottom: 12, rowGap: 5 }}
                     renderItem={({ item }) => (
                       <TouchableOpacity
                         onPress={() => { setPendingType(item); setTypeModalOpen(false); }}
-                        style={{ paddingVertical: 12, flexDirection: 'row', alignItems: 'center' }}
+                        activeOpacity={0.9}
+                        style={{
+                          width: SCREEN_W/2.35,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          paddingVertical: 16,
+                          paddingHorizontal: 10,
+                          borderRadius: 14,
+                          backgroundColor: colors.surfaceAlt,
+                          borderWidth: 1,
+                          borderColor: colors.hairline,
+                          shadowColor: colors.shadow,
+                          shadowOpacity: 0.08,
+                          shadowRadius: 8,
+                          shadowOffset: { width: 0, height: 4 },
+                          elevation: 2,
+                        }}
                       >
-                        <TypeIcon type={item} color={colors.textMuted} />
-                        <Text style={{ fontSize: 16, marginLeft: 10, color: colors.text }}>{typeLabel(item)}</Text>
+                        <TypeIcon type={item} color={colors.text} size={34} />
+                        <Text
+                          style={{
+                            marginTop: 8,
+                            fontSize: 14,
+                            fontWeight: '700',
+                            color: colors.text,
+                            textAlign: 'center',
+                          }}
+                          numberOfLines={2}
+                        >
+                          {typeLabel(item)}
+                        </Text>
                       </TouchableOpacity>
                     )}
-                    ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: colors.hairline }} />}
-                    contentContainerStyle={{ paddingBottom: 8 }}
+                    ListEmptyComponent={
+                      <View style={{ padding: 24, alignItems: 'center', opacity: 0.7 }}>
+                        <Text style={{ color: colors.textMuted }}>
+                          {t('common.noResults') || 'No matching types'}
+                        </Text>
+                      </View>
+                    }
                   />
                 </CoachMark>
               </View>
